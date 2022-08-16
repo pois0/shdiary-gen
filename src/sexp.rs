@@ -138,10 +138,7 @@ impl<R: Read> ParseCtx<R> {
             "a" => self.parse_weblink(),
             "b" => self.parse_bold(),
             "p" => self.parse_post(),
-            _ => {
-                println!("yooyo!!");
-                unexpected_keyword(keyword)
-            }
+            _ => unexpected_keyword(keyword),
         }
     }
 

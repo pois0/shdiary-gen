@@ -105,13 +105,15 @@ impl<'a, W: Write> HtmlGenerator<'a, W> {
     fn write_list(&mut self, items: &Vec<Item>) -> io::Result<()> {
         self.writer.start("ul")?;
         for item in items {
-            self.writer.start("li")?;
             match item {
-                Item::Text(txt) => self.write_text(&txt),
+                Item::Text(txt) => {
+                    self.writer.start("li")?;
+                    self.write_text(&txt)?;
+                    self.writer.end("li")
+                }
                 Item::List(li) => self.write_list(&li),
                 Item::Header(_) => unreachable!(),
             }?;
-            self.writer.end("li")?;
         }
         self.writer.end("ul")
     }
