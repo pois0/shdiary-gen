@@ -47,7 +47,14 @@ pub struct WebLink {
 pub enum Error {
     IOError(io::Error),
     Utf8Error(FromUtf8Error),
-    ParseError,
+    ParseError(ParseError),
+}
+
+#[derive(Debug)]
+pub enum ParseError {
+    UnexpectedEOF,
+    UnexpectedCharacter(u8),
+    UnknownKeyword(String),
 }
 
 pub type ParseResult<T> = Result<T, Error>;
@@ -91,7 +98,7 @@ impl<R: Read> ParseCtx<R> {
             "txt" | "text" => self.parse_text(),
             "li" | "list" => self.parse_list(),
             "h" | "header" => self.parse_header(),
-            _ => Err(Error::ParseError),
+            _ => unexpected_keyword(keyword),
         }
     }
 
@@ -116,10 +123,13 @@ impl<R: Read> ParseCtx<R> {
                     let text = self.parse_string()?;
                     result.push(TextItem::RawString(text));
                 }
-                _ => break,
+                _ => {
+                    return unexpected_chr(chr)
+                }
             }
         }
-        return Err(Error::ParseError);
+
+        unexpected_eof()
     }
 
     fn parse_text_item(&mut self) -> ParseResult<TextItem> {
@@ -128,7 +138,10 @@ impl<R: Read> ParseCtx<R> {
             "a" => self.parse_weblink(),
             "b" => self.parse_bold(),
             "p" => self.parse_post(),
-            _ => Err(Error::ParseError),
+            _ => {
+                println!("yooyo!!");
+                unexpected_keyword(keyword)
+            }
         }
     }
 
@@ -144,10 +157,12 @@ impl<R: Read> ParseCtx<R> {
                         let string = self.parse_string()?;
                         break string;
                     }
-                    _ => return Err(Error::ParseError),
+                    _ => {
+                        return unexpected_chr(chr)
+                    }
                 }
             } else {
-                return Err(Error::ParseError);
+                return unexpected_eof()
             }
         };
 
@@ -162,26 +177,16 @@ impl<R: Read> ParseCtx<R> {
                         let string = self.parse_string()?;
                         break string;
                     }
-                    _ => return Err(Error::ParseError),
+                    _ => {
+                        return unexpected_chr(chr)
+                    }
                 }
             } else {
-                return Err(Error::ParseError);
+                return unexpected_eof()
             }
         };
 
-        loop {
-            if let Some(chr) = self.chr {
-                match chr {
-                    0x20 | 0x09 | 0x0a | 0x0c | 0x0d => {
-                        self.seek().map_err(Error::IOError)?;
-                    }
-                    b')' => break,
-                    _ => return Err(Error::ParseError),
-                }
-            } else {
-                return Err(Error::ParseError);
-            }
-        }
+        self.roll_up_until_end()?;
 
         Ok(TextItem::WebLink(WebLink { title, href }))
     }
@@ -198,10 +203,12 @@ impl<R: Read> ParseCtx<R> {
                         let string = self.parse_string()?;
                         break string;
                     }
-                    _ => return Err(Error::ParseError),
+                    _ => {
+                        return unexpected_chr(chr)
+                    }
                 }
             } else {
-                return Err(Error::ParseError);
+                return unexpected_eof()
             }
         };
 
@@ -211,47 +218,11 @@ impl<R: Read> ParseCtx<R> {
     }
 
     fn parse_post(&mut self) -> ParseResult<TextItem> {
-        let year = loop {
-            if let Some(chr) = self.chr {
-                match chr {
-                    0x20 | 0x09 | 0x0a | 0x0c | 0x0d => {
-                        self.seek().map_err(Error::IOError)?;
-                    }
-                    b'0'..=b'9' => {
-                        break self.parse_number()?;
-                    }
-                    _ => return Err(Error::ParseError),
-                }
-            }
-        };
+        let year = self.parse_number()?;
 
-        let month = loop {
-            if let Some(chr) = self.chr {
-                match chr {
-                    0x20 | 0x09 | 0x0a | 0x0c | 0x0d => {
-                        self.seek().map_err(Error::IOError)?;
-                    }
-                    b'0'..=b'9' => {
-                        break self.parse_number()?;
-                    }
-                    _ => return Err(Error::ParseError),
-                }
-            }
-        };
+        let month = self.parse_number()?;
 
-        let day = loop {
-            if let Some(chr) = self.chr {
-                match chr {
-                    0x20 | 0x09 | 0x0a | 0x0c | 0x0d => {
-                        self.seek().map_err(Error::IOError)?;
-                    }
-                    b'0'..=b'9' => {
-                        break self.parse_number()?;
-                    }
-                    _ => return Err(Error::ParseError),
-                }
-            }
-        };
+        let day = self.parse_number()?;
 
         self.roll_up_until_end()?;
 
@@ -270,11 +241,13 @@ impl<R: Read> ParseCtx<R> {
                     self.roll_up_until_end()?;
                     return Ok(Item::Header(string));
                 }
-                _ => break,
+                _ => {
+                    return unexpected_chr(chr)
+                }
             }
         }
 
-        return Err(Error::ParseError);
+        unexpected_eof()
     }
 
     fn parse_list(&mut self) -> ParseResult<Item> {
@@ -283,34 +256,34 @@ impl<R: Read> ParseCtx<R> {
 
     fn parse_string(&mut self) -> ParseResult<String> {
         let mut result = Vec::new();
-        loop {
-            if let Some(chr) = self.chr {
-                match chr {
-                    0x5c => {
-                        self.seek().map_err(Error::IOError)?;
-                        if let Some(chr) = &self.chr {
-                            let chr = match chr {
-                                0x5c => 0x5c,
-                                0x22 => 0x22,
-                                _ => return Err(Error::ParseError),
-                            };
-                            result.push(chr);
-                        }
-                    }
-                    0x22 => {
-                        self.seek().map_err(Error::IOError)?;
-
-                        return String::from_utf8(result).map_err(Error::Utf8Error);
-                    }
-                    _ => {
+        while let Some(chr) = self.chr {
+            match chr {
+                0x5c => {
+                    self.seek().map_err(Error::IOError)?;
+                    if let Some(chr) = &self.chr {
+                        let chr = match chr {
+                            0x5c => 0x5c,
+                            0x22 => 0x22,
+                            _ => {
+                                return unexpected_chr(*chr)
+                            }
+                        };
                         result.push(chr);
-                        self.seek().map_err(Error::IOError)?;
                     }
                 }
-            } else {
-                return Err(Error::ParseError);
+                0x22 => {
+                    self.seek().map_err(Error::IOError)?;
+
+                    return String::from_utf8(result).map_err(Error::Utf8Error);
+                }
+                _ => {
+                    result.push(chr);
+                    self.seek().map_err(Error::IOError)?;
+                }
             }
         }
+
+        unexpected_eof()
     }
 
     fn parse_number(&mut self) -> ParseResult<u16> {
@@ -325,46 +298,46 @@ impl<R: Read> ParseCtx<R> {
                     self.seek().map_err(Error::IOError)?;
                     return Ok(result);
                 }
-                _ => break,
+                _ => {
+                    return unexpected_chr(chr)
+                }
             }
         }
 
-        Err(Error::ParseError)
+        unexpected_eof()
     }
 
     fn parse_keyword(&mut self) -> ParseResult<String> {
         let mut result = Vec::new();
-        loop {
-            if let Some(chr) = self.chr {
-                if chr.is_ascii_whitespace() {
-                    self.seek().map_err(Error::IOError)?;
-                    return String::from_utf8(result).map_err(Error::Utf8Error);
-                }
-                result.push(chr);
+
+        while let Some(chr) = self.chr {
+            if chr.is_ascii_whitespace() {
                 self.seek().map_err(Error::IOError)?;
-            } else {
-                return Err(Error::ParseError);
+                return String::from_utf8(result).map_err(Error::Utf8Error);
             }
+            result.push(chr);
+            self.seek().map_err(Error::IOError)?;
         }
+        
+        unexpected_eof()
     }
 
     fn roll_up_until_start(&mut self) -> ParseResult<()> {
-        loop {
-            if let Some(chr) = self.chr {
-                match chr {
-                    0x20 | 0x09 | 0x0a | 0x0c | 0x0d => {
-                        self.seek().map_err(Error::IOError)?;
-                    }
-                    b'(' => {
-                        self.seek().map_err(Error::IOError)?;
-                        break Ok(());
-                    }
-                    _ => break Err(Error::ParseError),
+        if let Some(chr) = self.chr {
+            match chr {
+                0x20 | 0x09 | 0x0a | 0x0c | 0x0d => {
+                    self.seek().map_err(Error::IOError)?;
                 }
-            } else {
-                break Err(Error::ParseError);
+                b'(' => {
+                    self.seek().map_err(Error::IOError)?;
+                    return Ok(());
+                }
+                _ => {
+                    return unexpected_chr(chr)
+                }
             }
         }
+        unexpected_eof()
     }
 
     fn parse_exprs(&mut self) -> ParseResult<Vec<Item>> {
@@ -389,30 +362,32 @@ impl<R: Read> ParseCtx<R> {
                     let text = self.parse_string()?;
                     result.push(Item::Text(vec![TextItem::RawString(text)]));
                 }
-                _ => return Err(Error::ParseError),
+                _ => {
+                    return unexpected_chr(chr)
+                }
             }
         }
 
-        return Err(Error::ParseError);
+        unexpected_eof()
     }
 
     fn roll_up_until_end(&mut self) -> ParseResult<()> {
-        loop {
-            if let Some(chr) = self.chr {
-                match chr {
-                    0x20 | 0x09 | 0x0a | 0x0c | 0x0d => {
-                        self.seek().map_err(Error::IOError)?;
-                    }
-                    b')' => {
-                        self.seek().map_err(Error::IOError)?;
-                        break Ok(());
-                    }
-                    _ => break Err(Error::ParseError),
+        while let Some(chr) = self.chr {
+            match chr {
+                0x20 | 0x09 | 0x0a | 0x0c | 0x0d => {
+                    self.seek().map_err(Error::IOError)?;
                 }
-            } else {
-                break Err(Error::ParseError);
+                b')' => {
+                    self.seek().map_err(Error::IOError)?;
+                    return Ok(())
+                }
+                _ => {
+                    return unexpected_chr(chr)
+                }
             }
         }
+
+        unexpected_eof()
     }
 }
 
@@ -423,4 +398,16 @@ pub fn parse<R: Read>(read: R) -> ParseResult<Document> {
     } else {
         Ok(Document::empty())
     }
+}
+
+fn unexpected_eof<T>() -> Result<T, Error> {
+    Err(Error::ParseError(ParseError::UnexpectedEOF))
+}
+
+fn unexpected_chr<T>(chr: u8) -> ParseResult<T> {
+    Err(Error::ParseError(ParseError::UnexpectedCharacter(chr)))
+}
+
+fn unexpected_keyword<T>(keyword: String) -> ParseResult<T> {
+    Err(Error::ParseError(ParseError::UnknownKeyword(keyword)))
 }

@@ -1,13 +1,15 @@
 use std::{
     collections::BTreeMap,
     env,
-    fs::{self, DirEntry, File},
+    fmt::Debug,
+    fs::{self, metadata, DirEntry, File},
     io::{self, BufReader, BufWriter},
     path::{Path, PathBuf},
-    string::FromUtf8Error, fmt::Debug,
+    string::FromUtf8Error,
 };
 
 use post_gen::generate_monthly;
+use sexp::ParseError;
 
 mod html;
 mod post_gen;
@@ -19,7 +21,7 @@ enum Error {
     IOError(io::Error),
     Utf8Error(FromUtf8Error),
     PathNameError(String),
-    ParseError,
+    ParseError(ParseError),
 }
 
 fn main() -> Result<(), Error> {
@@ -32,6 +34,11 @@ fn main() -> Result<(), Error> {
     let mut years: BTreeMap<usize, Vec<bool>> = BTreeMap::new();
 
     for year_dir in cd_dir.into_iter().filter_map(|res| res.ok()) {
+        let month_path = year_dir.path();
+        let metadata = metadata(month_path).map_err(Error::IOError)?;
+        if metadata.is_file() {
+            continue;
+        }
         let month_list = fs::read_dir(year_dir.path()).map_err(Error::IOError)?;
         let mut months = vec![false; 12];
 
@@ -43,7 +50,11 @@ fn main() -> Result<(), Error> {
             continue;
         }
 
-        let year_num = path_name_to_usize(&year_dir)?;
+        let year_num = if let Ok(num) = path_name_to_usize(&year_dir) {
+            num
+        } else {
+            continue
+        };
         let year_path = {
             let mut tmp = public_path.clone();
             tmp.push(format!("{}", year_num));
@@ -63,7 +74,7 @@ fn main() -> Result<(), Error> {
                 let post = sexp::parse(reader).map_err(|err| match err {
                     sexp::Error::IOError(err) => Error::IOError(err),
                     sexp::Error::Utf8Error(err) => Error::Utf8Error(err),
-                    sexp::Error::ParseError => Error::ParseError,
+                    sexp::Error::ParseError(err) => Error::ParseError(err),
                 })?;
 
                 let day_num = path_name_to_usize(&day)?;
