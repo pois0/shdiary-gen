@@ -50,10 +50,8 @@ impl<'a, W: Write> PostGenerator<'a, W> {
             .filter_map(|(day, doc)| doc.map(|doc| (day, doc)))
             .rev()
         {
-            self.writer.start("dd")?;
             let date = NaiveDate::from_ymd(year, month, (day + 1) as u32);
             self.generate_daily(&date, &doc)?;
-            self.writer.end("dd")?;
         }
 
         self.writer.end("dl")?;
@@ -63,7 +61,11 @@ impl<'a, W: Write> PostGenerator<'a, W> {
     }
 
     fn generate_daily(&mut self, date: &NaiveDate, doc: &Document) -> io::Result<()> {
+        self.writer.start("dt")?;
         self.write_date(date)?;
+        self.writer.end("dt")?;
+
+        self.writer.start("dd")?;
         for item in doc.contents() {
             match item {
                 Item::Text(txt) => self.write_paragraph(txt),
@@ -71,6 +73,7 @@ impl<'a, W: Write> PostGenerator<'a, W> {
                 Item::Header(txt) => self.write_header(txt),
             }?;
         }
+        self.writer.end("dd")?;
 
         Ok(())
     }
