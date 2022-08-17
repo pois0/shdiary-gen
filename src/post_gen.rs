@@ -7,11 +7,11 @@ use crate::sexp::Document;
 use crate::sexp::{Item, Text, TextItem};
 use crate::util::weekday_ja;
 
-struct HtmlGenerator<'a, W: Write> {
+struct PostGenerator<'a, W: Write> {
     writer: HtmlWriter<'a, W>,
 }
 
-impl<'a, W: Write> HtmlGenerator<'a, W> {
+impl<'a, W: Write> PostGenerator<'a, W> {
     fn new(writer: &'a mut W) -> Self {
         Self {
             writer: HtmlWriter::new(writer),
@@ -153,6 +153,6 @@ pub fn generate_monthly<W: Write>(
     month: u32,
     docs: Vec<Option<Document>>,
 ) -> io::Result<()> {
-    let mut gen = HtmlGenerator::new(writer);
+    let mut gen = PostGenerator::new(writer);
     gen.generate_monthly(year, month, docs)
 }
