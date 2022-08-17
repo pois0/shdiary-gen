@@ -1,4 +1,4 @@
-use std::io::{Write, self};
+use std::io::{self, Write};
 
 pub struct HtmlWriter<'a, W: Write> {
     writer: &'a mut W,
@@ -38,7 +38,7 @@ impl<'a, W: Write> HtmlWriter<'a, W> {
     }
 }
 
-impl <'a, W: Write> Write for HtmlWriter<'a, W> {
+impl<'a, W: Write> Write for HtmlWriter<'a, W> {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         self.writer.write(buf)
     }

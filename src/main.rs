@@ -13,10 +13,10 @@ use post_gen::generate_monthly;
 use sexp::ParseError;
 
 mod html;
+mod index_gen;
 mod post_gen;
 mod sexp;
 mod util;
-mod index_gen;
 
 #[derive(Debug)]
 enum Error {
@@ -55,7 +55,7 @@ fn main() -> Result<(), Error> {
         let year_num = if let Ok(num) = path_name_to_usize(&year_dir) {
             num
         } else {
-            continue
+            continue;
         };
         let year_path = {
             let mut tmp = public_path.clone();

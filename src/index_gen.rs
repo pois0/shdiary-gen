@@ -54,7 +54,8 @@ impl<'a, W: Write> IndexGenerator<'a, W> {
         {
             self.writer.start("ul")?;
             self.writer.start("li")?;
-            self.writer.start_attr("a", &[("href", &format!("/{}/{:02}", year, month))])?;
+            self.writer
+                .start_attr("a", &[("href", &format!("/{}/{:02}", year, month))])?;
             write!(self.writer, "{}月", month)?;
             self.writer.end("li")?;
             self.writer.end("ul")?;

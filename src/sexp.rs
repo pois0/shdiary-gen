@@ -123,9 +123,7 @@ impl<R: Read> ParseCtx<R> {
                     let text = self.parse_string()?;
                     result.push(TextItem::RawString(text));
                 }
-                _ => {
-                    return unexpected_chr(chr)
-                }
+                _ => return unexpected_chr(chr),
             }
         }
 
@@ -154,12 +152,10 @@ impl<R: Read> ParseCtx<R> {
                         let string = self.parse_string()?;
                         break string;
                     }
-                    _ => {
-                        return unexpected_chr(chr)
-                    }
+                    _ => return unexpected_chr(chr),
                 }
             } else {
-                return unexpected_eof()
+                return unexpected_eof();
             }
         };
 
@@ -174,12 +170,10 @@ impl<R: Read> ParseCtx<R> {
                         let string = self.parse_string()?;
                         break string;
                     }
-                    _ => {
-                        return unexpected_chr(chr)
-                    }
+                    _ => return unexpected_chr(chr),
                 }
             } else {
-                return unexpected_eof()
+                return unexpected_eof();
             }
         };
 
@@ -200,12 +194,10 @@ impl<R: Read> ParseCtx<R> {
                         let string = self.parse_string()?;
                         break string;
                     }
-                    _ => {
-                        return unexpected_chr(chr)
-                    }
+                    _ => return unexpected_chr(chr),
                 }
             } else {
-                return unexpected_eof()
+                return unexpected_eof();
             }
         };
 
@@ -238,9 +230,7 @@ impl<R: Read> ParseCtx<R> {
                     self.roll_up_until_end()?;
                     return Ok(Item::Header(string));
                 }
-                _ => {
-                    return unexpected_chr(chr)
-                }
+                _ => return unexpected_chr(chr),
             }
         }
 
@@ -261,9 +251,7 @@ impl<R: Read> ParseCtx<R> {
                         let chr = match chr {
                             0x5c => 0x5c,
                             0x22 => 0x22,
-                            _ => {
-                                return unexpected_chr(*chr)
-                            }
+                            _ => return unexpected_chr(*chr),
                         };
                         result.push(chr);
                     }
@@ -295,9 +283,7 @@ impl<R: Read> ParseCtx<R> {
                     self.seek().map_err(Error::IOError)?;
                     return Ok(result);
                 }
-                _ => {
-                    return unexpected_chr(chr)
-                }
+                _ => return unexpected_chr(chr),
             }
         }
 
@@ -315,7 +301,7 @@ impl<R: Read> ParseCtx<R> {
             result.push(chr);
             self.seek().map_err(Error::IOError)?;
         }
-        
+
         unexpected_eof()
     }
 
@@ -329,9 +315,7 @@ impl<R: Read> ParseCtx<R> {
                     self.seek().map_err(Error::IOError)?;
                     return Ok(());
                 }
-                _ => {
-                    return unexpected_chr(chr)
-                }
+                _ => return unexpected_chr(chr),
             }
         }
         unexpected_eof()
@@ -359,9 +343,7 @@ impl<R: Read> ParseCtx<R> {
                     let text = self.parse_string()?;
                     result.push(Item::Text(vec![TextItem::RawString(text)]));
                 }
-                _ => {
-                    return unexpected_chr(chr)
-                }
+                _ => return unexpected_chr(chr),
             }
         }
 
@@ -376,11 +358,9 @@ impl<R: Read> ParseCtx<R> {
                 }
                 b')' => {
                     self.seek().map_err(Error::IOError)?;
-                    return Ok(())
+                    return Ok(());
                 }
-                _ => {
-                    return unexpected_chr(chr)
-                }
+                _ => return unexpected_chr(chr),
             }
         }
 
