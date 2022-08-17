@@ -8,6 +8,7 @@ use std::{
     string::FromUtf8Error,
 };
 
+use index_gen::generate_index;
 use post_gen::generate_monthly;
 use sexp::ParseError;
 
@@ -15,6 +16,7 @@ mod html;
 mod post_gen;
 mod sexp;
 mod util;
+mod index_gen;
 
 #[derive(Debug)]
 enum Error {
@@ -31,7 +33,7 @@ fn main() -> Result<(), Error> {
     let public_path = current_path;
     mkdir_if_not_exists(public_path.clone()).map_err(Error::IOError)?;
 
-    let mut years: BTreeMap<usize, Vec<bool>> = BTreeMap::new();
+    let mut years: BTreeMap<u32, Vec<bool>> = BTreeMap::new();
 
     for year_dir in cd_dir.into_iter().filter_map(|res| res.ok()) {
         let month_path = year_dir.path();
@@ -97,8 +99,20 @@ fn main() -> Result<(), Error> {
                 .map_err(Error::IOError)?;
         }
 
-        years.insert(year_num, months);
+        years.insert(year_num as u32, months);
     }
+
+    let index_file_name = {
+        let mut tmp = public_path.clone();
+        tmp.push("index.html");
+        tmp
+    };
+    File::create(index_file_name)
+        .and_then(|f| {
+            let mut buf = BufWriter::new(f);
+            generate_index(&mut buf, years.iter())
+        })
+        .map_err(Error::IOError)?;
 
     Ok(())
 }
