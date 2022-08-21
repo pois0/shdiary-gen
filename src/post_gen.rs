@@ -138,8 +138,7 @@ impl<'a, W: Write> PostGenerator<'a, W> {
                     self.writer.end("a")?;
                 }
                 TextItem::PostLink((year, month, day)) => {
-                    let id = format!("{:02}", day);
-                    let href = format!("/{}/{}#{}", year, month, id);
+                    let href = format!("/{:04}/{:02}#{:02}", year, month, day);
                     write!(self.writer, "(ref. ")?;
                     self.writer.start_attr("a", &[("href", &href)])?;
                     write!(self.writer, "{:04}/{:02}/{:02}", year, month, day)?;
