@@ -32,6 +32,9 @@ impl<'a, W: Write> IndexGenerator<'a, W> {
         self.writer.start("h1")?;
         write!(self.writer, "{}", "Natuka.ge")?;
         self.writer.end("h1")?;
+        self.writer.start_attr("a", &[("href", "/links")])?;
+        write!(self.writer, "リンク")?;
+        self.writer.end("a")?;
         self.writer.start("hr")?;
         self.writer.start("ul")?;
         for (year, months) in list {
