@@ -27,10 +27,9 @@ enum Error {
 }
 
 fn main() -> Result<(), Error> {
-    let mut current_path = env::current_dir().map_err(Error::IOError)?;
+    let current_path = env::current_dir().map_err(Error::IOError)?;
     let cd_dir = fs::read_dir(current_path.clone()).map_err(Error::IOError)?;
-    current_path.push("public");
-    let public_path = current_path;
+    let public_path = push_path(&current_path, "public");
     mkdir_if_not_exists(public_path.clone()).map_err(Error::IOError)?;
 
     let mut years: BTreeMap<u32, Vec<bool>> = BTreeMap::new();
@@ -57,11 +56,7 @@ fn main() -> Result<(), Error> {
         } else {
             continue;
         };
-        let year_path = {
-            let mut tmp = public_path.clone();
-            tmp.push(format!("{}", year_num));
-            tmp
-        };
+        let year_path = push_path(&public_path, &format!("{}", year_num));
         mkdir_if_not_exists(year_path.clone()).map_err(Error::IOError)?;
 
         for month_dir in month_list.into_iter().filter_map(|res| res.ok()) {
@@ -79,18 +74,14 @@ fn main() -> Result<(), Error> {
                     sexp::Error::ParseError(err) => Error::ParseError(err),
                 })?;
 
-                let day_num = path_name_to_usize(&day)?;
+                            let day_num = path_name_to_usize(&day)?;
                 days[day_num - 1] = Some(post);
             }
 
             let month_num = path_name_to_usize(&month_dir)?;
             months[month_num - 1] = true;
 
-            let file_name = {
-                let mut tmp = year_path.clone();
-                tmp.push(format!("{:02}.html", month_num));
-                tmp
-            };
+            let file_name = push_path(&year_path, &format!("{:02}.html", month_num));
             File::create(file_name)
                 .and_then(|f| {
                     let mut buf = BufWriter::new(f);
@@ -102,11 +93,13 @@ fn main() -> Result<(), Error> {
         years.insert(year_num as u32, months);
     }
 
-    let index_file_name = {
-        let mut tmp = public_path.clone();
-        tmp.push("index.html");
-        tmp
-    };
+    let source_path = push_path(&current_path, "source");
+    let source_path_exists = source_path.try_exists().map_err(Error::IOError)?;
+    if source_path_exists {
+        copy_source(&source_path, &public_path).map_err(Error::IOError)?;
+    }
+
+    let index_file_name = push_path(&public_path, "index.html");
     File::create(index_file_name)
         .and_then(|f| {
             let mut buf = BufWriter::new(f);
@@ -114,6 +107,28 @@ fn main() -> Result<(), Error> {
         })
         .map_err(Error::IOError)?;
 
+    Ok(())
+}
+
+fn copy_source(src: &PathBuf, dst: &PathBuf) -> io::Result<()> {
+    let src_dir = fs::read_dir(src)?;
+    for f in src_dir.into_iter().filter_map(|res| res.ok()) {
+        let src_path = f.path();
+        let file_type = metadata(src_path.clone()).map(|m| m.file_type())?;
+        let file_name_osstr = f.file_name();
+        let entry_name = if let Some(file_name) = file_name_osstr.to_str() {
+            file_name
+        } else {
+            continue;
+        };
+
+        if file_type.is_dir() {
+            copy_source(&src_path, &push_path(dst, entry_name))?;
+        } else if file_type.is_file() {
+            let dst_path = push_path(dst, entry_name);
+            fs::copy(src_path, dst_path)?;
+        }
+    }
     Ok(())
 }
 
@@ -145,3 +160,10 @@ fn path_name_err(day: &DirEntry) -> Error {
         .map_or("".to_string(), |s| s.to_string());
     Error::PathNameError(path)
 }
+
+fn push_path(origin: &PathBuf, elem: &str) -> PathBuf {
+    let mut tmp = origin.clone();
+    tmp.push(elem);
+    tmp
+}
+
