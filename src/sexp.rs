@@ -1,5 +1,7 @@
-use std::io::{self, Bytes, Read};
+use std::io::{self, Read};
 use std::string::{FromUtf8Error, String};
+
+use crate::string_reader::StringReader;
 
 #[derive(Clone, Debug)]
 pub struct Document {
@@ -58,33 +60,22 @@ pub enum ParseError {
 }
 
 pub type ParseResult<T> = Result<T, Error>;
-type IOResult<T> = Result<T, io::Error>;
 
 struct ParseCtx<R: Read> {
-    bytes: Bytes<R>,
-    chr: Option<u8>,
+    reader: StringReader<R>,
 }
 
 impl<R: Read> ParseCtx<R> {
-    fn new(raw_read: R) -> Option<IOResult<Self>> {
-        let mut bytes = raw_read.bytes();
-        bytes.next().map(|chr| {
-            chr.map(|chr| Self {
-                bytes,
-                chr: Some(chr),
-            })
-        })
+    fn new(reader: StringReader<R>) -> Self {
+        Self { reader }
     }
 
-    fn seek(&mut self) -> IOResult<()> {
-        self.chr = match self.bytes.next() {
-            Some(res) => {
-                let chr = res?;
-                Some(chr)
-            }
-            None => None,
-        };
-        Ok(())
+    fn chr(&self) -> Option<u8> {
+        self.reader.chr()
+    }
+
+    fn seek(&mut self) -> ParseResult<()> {
+        self.reader.seek().map_err(Error::IOError)
     }
 
     fn parse_root(&mut self) -> ParseResult<Document> {
@@ -104,22 +95,22 @@ impl<R: Read> ParseCtx<R> {
 
     fn parse_text(&mut self) -> ParseResult<Item> {
         let mut result = Vec::new();
-        while let Some(chr) = self.chr {
+        while let Some(chr) = self.chr() {
             match chr {
                 0x20 | 0x09 | 0x0a | 0x0c | 0x0d => {
-                    self.seek().map_err(Error::IOError)?;
+                    self.seek()?;
                 }
                 b'(' => {
-                    self.seek().map_err(Error::IOError)?;
+                    self.seek()?;
                     let item = self.parse_text_item()?;
                     result.push(item);
                 }
                 b')' => {
-                    self.seek().map_err(Error::IOError)?;
+                    self.seek()?;
                     return Ok(Item::Text(result));
                 }
                 b'"' => {
-                    self.seek().map_err(Error::IOError)?;
+                    self.seek()?;
                     let text = self.parse_string()?;
                     result.push(TextItem::RawString(text));
                 }
@@ -142,13 +133,13 @@ impl<R: Read> ParseCtx<R> {
 
     fn parse_weblink(&mut self) -> ParseResult<TextItem> {
         let title = loop {
-            if let Some(chr) = self.chr {
+            if let Some(chr) = self.chr() {
                 match chr {
                     0x20 | 0x09 | 0x0a | 0x0c | 0x0d => {
-                        self.seek().map_err(Error::IOError)?;
+                        self.seek()?;
                     }
                     b'"' => {
-                        self.seek().map_err(Error::IOError)?;
+                        self.seek()?;
                         let string = self.parse_string()?;
                         break string;
                     }
@@ -160,13 +151,13 @@ impl<R: Read> ParseCtx<R> {
         };
 
         let href = loop {
-            if let Some(chr) = self.chr {
+            if let Some(chr) = self.chr() {
                 match chr {
                     0x20 | 0x09 | 0x0a | 0x0c | 0x0d => {
-                        self.seek().map_err(Error::IOError)?;
+                        self.seek()?;
                     }
                     b'"' => {
-                        self.seek().map_err(Error::IOError)?;
+                        self.seek()?;
                         let string = self.parse_string()?;
                         break string;
                     }
@@ -184,13 +175,13 @@ impl<R: Read> ParseCtx<R> {
 
     fn parse_bold(&mut self) -> ParseResult<TextItem> {
         let string = loop {
-            if let Some(chr) = self.chr {
+            if let Some(chr) = self.chr() {
                 match chr {
                     0x20 | 0x09 | 0x0a | 0x0c | 0x0d => {
-                        self.seek().map_err(Error::IOError)?;
+                        self.seek()?;
                     }
                     b'"' => {
-                        self.seek().map_err(Error::IOError)?;
+                        self.seek()?;
                         let string = self.parse_string()?;
                         break string;
                     }
@@ -219,13 +210,13 @@ impl<R: Read> ParseCtx<R> {
     }
 
     fn parse_header(&mut self) -> ParseResult<Item> {
-        while let Some(chr) = self.chr {
+        while let Some(chr) = self.chr() {
             match chr {
                 0x20 | 0x09 | 0x0a | 0x0c | 0x0d => {
-                    self.seek().map_err(Error::IOError)?;
+                    self.seek()?;
                 }
                 b'"' => {
-                    self.seek().map_err(Error::IOError)?;
+                    self.seek()?;
                     let string = self.parse_string()?;
                     self.roll_up_until_end()?;
                     return Ok(Item::Header(string));
@@ -243,11 +234,11 @@ impl<R: Read> ParseCtx<R> {
 
     fn parse_string(&mut self) -> ParseResult<String> {
         let mut result = Vec::new();
-        while let Some(chr) = self.chr {
+        while let Some(chr) = self.chr() {
             match chr {
                 0x5c => {
-                    self.seek().map_err(Error::IOError)?;
-                    if let Some(chr) = &self.chr {
+                    self.seek()?;
+                    if let Some(chr) = &self.chr() {
                         let chr = match chr {
                             0x5c => 0x5c,
                             0x22 => 0x22,
@@ -257,13 +248,13 @@ impl<R: Read> ParseCtx<R> {
                     }
                 }
                 0x22 => {
-                    self.seek().map_err(Error::IOError)?;
+                    self.seek()?;
 
                     return String::from_utf8(result).map_err(Error::Utf8Error);
                 }
                 _ => {
                     result.push(chr);
-                    self.seek().map_err(Error::IOError)?;
+                    self.seek()?;
                 }
             }
         }
@@ -273,14 +264,14 @@ impl<R: Read> ParseCtx<R> {
 
     fn parse_number(&mut self) -> ParseResult<u16> {
         let mut result = 0u16;
-        while let Some(chr) = self.chr {
+        while let Some(chr) = self.chr() {
             match chr {
                 b'0'..=b'9' => {
-                    self.seek().map_err(Error::IOError)?;
+                    self.seek()?;
                     result = result * 10 + u16::from(chr - b'0');
                 }
                 0x20 | 0x09 | 0x0a | 0x0c | 0x0d => {
-                    self.seek().map_err(Error::IOError)?;
+                    self.seek()?;
                     return Ok(result);
                 }
                 _ => return unexpected_chr(chr),
@@ -293,26 +284,26 @@ impl<R: Read> ParseCtx<R> {
     fn parse_keyword(&mut self) -> ParseResult<String> {
         let mut result = Vec::new();
 
-        while let Some(chr) = self.chr {
+        while let Some(chr) = self.chr() {
             if chr.is_ascii_whitespace() {
-                self.seek().map_err(Error::IOError)?;
+                self.seek()?;
                 return String::from_utf8(result).map_err(Error::Utf8Error);
             }
             result.push(chr);
-            self.seek().map_err(Error::IOError)?;
+            self.seek()?;
         }
 
         unexpected_eof()
     }
 
     fn roll_up_until_start(&mut self) -> ParseResult<()> {
-        if let Some(chr) = self.chr {
+        if let Some(chr) = self.chr() {
             match chr {
                 0x20 | 0x09 | 0x0a | 0x0c | 0x0d => {
-                    self.seek().map_err(Error::IOError)?;
+                    self.seek()?;
                 }
                 b'(' => {
-                    self.seek().map_err(Error::IOError)?;
+                    self.seek()?;
                     return Ok(());
                 }
                 _ => return unexpected_chr(chr),
@@ -324,22 +315,22 @@ impl<R: Read> ParseCtx<R> {
     fn parse_exprs(&mut self) -> ParseResult<Vec<Item>> {
         let mut result = Vec::new();
 
-        while let Some(chr) = self.chr {
+        while let Some(chr) = self.chr() {
             match chr {
                 0x20 | 0x09 | 0x0a | 0x0c | 0x0d => {
-                    self.seek().map_err(Error::IOError)?;
+                    self.seek()?;
                 }
                 b'(' => {
-                    self.seek().map_err(Error::IOError)?;
+                    self.seek()?;
                     let item = self.parse_expr()?;
                     result.push(item);
                 }
                 b')' => {
-                    self.seek().map_err(Error::IOError)?;
+                    self.seek()?;
                     return Ok(result);
                 }
                 b'"' => {
-                    self.seek().map_err(Error::IOError)?;
+                    self.seek()?;
                     let text = self.parse_string()?;
                     result.push(Item::Text(vec![TextItem::RawString(text)]));
                 }
@@ -351,13 +342,13 @@ impl<R: Read> ParseCtx<R> {
     }
 
     fn roll_up_until_end(&mut self) -> ParseResult<()> {
-        while let Some(chr) = self.chr {
+        while let Some(chr) = self.chr() {
             match chr {
                 0x20 | 0x09 | 0x0a | 0x0c | 0x0d => {
-                    self.seek().map_err(Error::IOError)?;
+                    self.seek()?;
                 }
                 b')' => {
-                    self.seek().map_err(Error::IOError)?;
+                    self.seek()?;
                     return Ok(());
                 }
                 _ => return unexpected_chr(chr),
@@ -369,12 +360,10 @@ impl<R: Read> ParseCtx<R> {
 }
 
 pub fn parse<R: Read>(read: R) -> ParseResult<Document> {
-    if let Some(ctx_result) = ParseCtx::new(read) {
-        let mut ctx = ctx_result.map_err(Error::IOError)?;
-        ctx.parse_root()
-    } else {
-        Ok(Document::empty())
-    }
+    let reader = StringReader::new(read).map_err(Error::IOError)?;
+    reader.map_or(Ok(Document::empty()), |reader| {
+        ParseCtx::new(reader).parse_root()
+    })
 }
 
 fn unexpected_eof<T>() -> Result<T, Error> {

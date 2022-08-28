@@ -17,6 +17,7 @@ mod index_gen;
 mod post_gen;
 mod sexp;
 mod util;
+mod string_reader;
 
 #[derive(Debug)]
 enum Error {
