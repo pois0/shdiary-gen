@@ -2,6 +2,7 @@ use std::io::{self, Read};
 use std::string::{FromUtf8Error, String};
 
 use crate::string_reader::StringReader;
+use crate::roll_up_until;
 
 #[derive(Clone, Debug)]
 pub struct Document {
@@ -66,6 +67,7 @@ struct ParseCtx<R: Read> {
 }
 
 impl<R: Read> ParseCtx<R> {
+
     fn new(reader: StringReader<R>) -> Self {
         Self { reader }
     }
@@ -79,7 +81,8 @@ impl<R: Read> ParseCtx<R> {
     }
 
     fn parse_root(&mut self) -> ParseResult<Document> {
-        self.roll_up_until_start()?;
+        roll_up_until!(self, b'(')?;
+        self.seek()?;
         self.parse_exprs().map(Document::new)
     }
 
@@ -132,104 +135,54 @@ impl<R: Read> ParseCtx<R> {
     }
 
     fn parse_weblink(&mut self) -> ParseResult<TextItem> {
-        let title = loop {
-            if let Some(chr) = self.chr() {
-                match chr {
-                    0x20 | 0x09 | 0x0a | 0x0c | 0x0d => {
-                        self.seek()?;
-                    }
-                    b'"' => {
-                        self.seek()?;
-                        let string = self.parse_string()?;
-                        break string;
-                    }
-                    _ => return unexpected_chr(chr),
-                }
-            } else {
-                return unexpected_eof();
-            }
-        };
-
-        let href = loop {
-            if let Some(chr) = self.chr() {
-                match chr {
-                    0x20 | 0x09 | 0x0a | 0x0c | 0x0d => {
-                        self.seek()?;
-                    }
-                    b'"' => {
-                        self.seek()?;
-                        let string = self.parse_string()?;
-                        break string;
-                    }
-                    _ => return unexpected_chr(chr),
-                }
-            } else {
-                return unexpected_eof();
-            }
-        };
-
-        self.roll_up_until_end()?;
+        let title = self.expect_string()?;
+        let href = self.expect_string()?;
+        roll_up_until!(self, b')')?;
+        self.seek()?;
 
         Ok(TextItem::WebLink(WebLink { title, href }))
     }
 
     fn parse_bold(&mut self) -> ParseResult<TextItem> {
-        let string = loop {
-            if let Some(chr) = self.chr() {
-                match chr {
-                    0x20 | 0x09 | 0x0a | 0x0c | 0x0d => {
-                        self.seek()?;
-                    }
-                    b'"' => {
-                        self.seek()?;
-                        let string = self.parse_string()?;
-                        break string;
-                    }
-                    _ => return unexpected_chr(chr),
-                }
-            } else {
-                return unexpected_eof();
-            }
-        };
+        let string = self.expect_string()?;
 
-        self.roll_up_until_end()?;
+        roll_up_until!(self, b')')?;
+        self.seek()?;
 
         Ok(TextItem::Bold(string))
     }
 
     fn parse_post(&mut self) -> ParseResult<TextItem> {
-        let year = self.parse_number()?;
+        let year = self.expect_number()?;
 
-        let month = self.parse_number()?;
+        let month = self.expect_number()?;
 
-        let day = self.parse_number()?;
+        let day = self.expect_number()?;
 
-        self.roll_up_until_end()?;
+        roll_up_until!(self, b')')?;
+        self.seek()?;
 
         Ok(TextItem::PostLink((year, month, day)))
     }
 
     fn parse_header(&mut self) -> ParseResult<Item> {
-        while let Some(chr) = self.chr() {
-            match chr {
-                0x20 | 0x09 | 0x0a | 0x0c | 0x0d => {
-                    self.seek()?;
-                }
-                b'"' => {
-                    self.seek()?;
-                    let string = self.parse_string()?;
-                    self.roll_up_until_end()?;
-                    return Ok(Item::Header(string));
-                }
-                _ => return unexpected_chr(chr),
-            }
-        }
-
-        unexpected_eof()
+        roll_up_until!(self, b'"', {
+            self.seek()?;
+            let string = self.parse_string()?;
+            roll_up_until!(self, b')')?;
+            self.seek()?;
+            Ok(Item::Header(string))
+        })
     }
 
     fn parse_list(&mut self) -> ParseResult<Item> {
         self.parse_exprs().map(Item::List)
+    }
+
+    fn expect_string(&mut self) -> ParseResult<String> {
+        roll_up_until!(self, b'"')?;
+        self.seek()?;
+        self.parse_string()
     }
 
     fn parse_string(&mut self) -> ParseResult<String> {
@@ -262,6 +215,11 @@ impl<R: Read> ParseCtx<R> {
         unexpected_eof()
     }
 
+    fn expect_number(&mut self) -> ParseResult<u16> {
+        roll_up_until!(self, b'0'..=b'9')?;
+        self.parse_number()
+    }
+
     fn parse_number(&mut self) -> ParseResult<u16> {
         let mut result = 0u16;
         while let Some(chr) = self.chr() {
@@ -270,11 +228,9 @@ impl<R: Read> ParseCtx<R> {
                     self.seek()?;
                     result = result * 10 + u16::from(chr - b'0');
                 }
-                0x20 | 0x09 | 0x0a | 0x0c | 0x0d => {
-                    self.seek()?;
+                _ => {
                     return Ok(result);
                 }
-                _ => return unexpected_chr(chr),
             }
         }
 
@@ -293,22 +249,6 @@ impl<R: Read> ParseCtx<R> {
             self.seek()?;
         }
 
-        unexpected_eof()
-    }
-
-    fn roll_up_until_start(&mut self) -> ParseResult<()> {
-        if let Some(chr) = self.chr() {
-            match chr {
-                0x20 | 0x09 | 0x0a | 0x0c | 0x0d => {
-                    self.seek()?;
-                }
-                b'(' => {
-                    self.seek()?;
-                    return Ok(());
-                }
-                _ => return unexpected_chr(chr),
-            }
-        }
         unexpected_eof()
     }
 
@@ -340,23 +280,6 @@ impl<R: Read> ParseCtx<R> {
 
         unexpected_eof()
     }
-
-    fn roll_up_until_end(&mut self) -> ParseResult<()> {
-        while let Some(chr) = self.chr() {
-            match chr {
-                0x20 | 0x09 | 0x0a | 0x0c | 0x0d => {
-                    self.seek()?;
-                }
-                b')' => {
-                    self.seek()?;
-                    return Ok(());
-                }
-                _ => return unexpected_chr(chr),
-            }
-        }
-
-        unexpected_eof()
-    }
 }
 
 pub fn parse<R: Read>(read: R) -> ParseResult<Document> {
@@ -376,4 +299,46 @@ fn unexpected_chr<T>(chr: u8) -> ParseResult<T> {
 
 fn unexpected_keyword<T>(keyword: String) -> ParseResult<T> {
     Err(Error::ParseError(ParseError::UnknownKeyword(keyword)))
+}
+
+#[macro_export]
+macro_rules! roll_up_until {
+    ($reader: expr, $cond: pat) => {
+        '__roll_up_until_lablel: loop {
+            if let Some(chr) = $reader.chr() {
+                match chr {
+                    0x20 | 0x09 | 0x0a | 0x0c | 0x0d => {
+                        $reader.seek()?;
+                    }
+                    $cond => {
+                        break '__roll_up_until_lablel Ok(())
+                    }
+                    _ => {
+                        break '__roll_up_until_lablel unexpected_chr(chr)
+                    }
+                }
+            } else {
+                break '__roll_up_until_lablel unexpected_eof()
+            }
+        }
+    };
+    ($reader: expr, $cond: pat, $then: block) => {
+        '__roll_up_until_lablel: loop {
+            if let Some(chr) = $reader.chr() {
+                match chr {
+                    0x20 | 0x09 | 0x0a | 0x0c | 0x0d => {
+                        $reader.seek()?;
+                    }
+                    $cond => {
+                        break '__roll_up_until_lablel ($then)
+                    }
+                    _ => {
+                        break '__roll_up_until_lablel unexpected_chr(chr)
+                    }
+                }
+            } else {
+                break '__roll_up_until_lablel unexpected_eof()
+            }
+        }
+    };
 }
