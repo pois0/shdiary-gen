@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use chrono::{Datelike, Weekday};
 
 pub fn weekday_ja<D: Datelike>(date: &D) -> &str {
@@ -10,4 +12,10 @@ pub fn weekday_ja<D: Datelike>(date: &D) -> &str {
         Weekday::Sat => "土",
         Weekday::Sun => "日",
     }
+}
+
+pub fn push_path(origin: &PathBuf, elem: &str) -> PathBuf {
+    let mut tmp = origin.clone();
+    tmp.push(elem);
+    tmp
 }

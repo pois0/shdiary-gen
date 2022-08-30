@@ -9,15 +9,17 @@ use std::{
 };
 
 use index_gen::generate_index;
-use post_gen::generate_monthly;
-use sexp::ParseError;
+use post_gen::{generate_monthly, OutputDocument, OutputItem};
+use sexp::{Document, Item, ParseError, SourceDoucument, SourceItem};
+use util::push_path;
 
 mod html;
+mod image;
 mod index_gen;
 mod post_gen;
 mod sexp;
-mod util;
 mod string_reader;
+mod util;
 
 #[derive(Debug)]
 enum Error {
@@ -31,6 +33,7 @@ fn main() -> Result<(), Error> {
     let current_path = env::current_dir().map_err(Error::IOError)?;
     let cd_dir = fs::read_dir(current_path.clone()).map_err(Error::IOError)?;
     let public_path = push_path(&current_path, "public");
+    let images_public_path = push_path(&public_path, "img");
     mkdir_if_not_exists(public_path.clone()).map_err(Error::IOError)?;
 
     let mut years: BTreeMap<u32, Vec<bool>> = BTreeMap::new();
@@ -75,8 +78,10 @@ fn main() -> Result<(), Error> {
                     sexp::Error::ParseError(err) => Error::ParseError(err),
                 })?;
 
-                            let day_num = path_name_to_usize(&day)?;
-                days[day_num - 1] = Some(post);
+                let output = handle_image(post).map_err(|err| Error::IOError(err))?;
+
+                let day_num = path_name_to_usize(&day)?;
+                days[day_num - 1] = Some(output);
             }
 
             let month_num = path_name_to_usize(&month_dir)?;
@@ -133,6 +138,33 @@ fn copy_source(src: &PathBuf, dst: &PathBuf) -> io::Result<()> {
     Ok(())
 }
 
+fn handle_image(src: SourceDoucument) -> io::Result<OutputDocument> {
+    let mut contents = Vec::with_capacity(src.contents().len());
+    for item in src.into_contents() {
+        let output_item = handle_image_items(item)?;
+        contents.push(output_item);
+    }
+    Ok(Document::new(contents))
+}
+
+fn handle_image_items(src: SourceItem) -> io::Result<OutputItem> {
+    match src {
+        Item::Images(image) => {
+            todo!()
+        }
+        Item::List(li) => {
+            let mut contents = Vec::with_capacity(li.len());
+            for item in li {
+                let output_item = handle_image_items(item)?;
+                contents.push(output_item);
+            }
+            Ok(Item::List(contents))
+        }
+        Item::Text(x) => Ok(Item::Text(x)),
+        Item::Header(x) => Ok(Item::Header(x)),
+    }
+}
+
 fn mkdir_if_not_exists(path: PathBuf) -> io::Result<()> {
     let exists = path.try_exists()?;
     if !exists {
@@ -161,10 +193,3 @@ fn path_name_err(day: &DirEntry) -> Error {
         .map_or("".to_string(), |s| s.to_string());
     Error::PathNameError(path)
 }
-
-fn push_path(origin: &PathBuf, elem: &str) -> PathBuf {
-    let mut tmp = origin.clone();
-    tmp.push(elem);
-    tmp
-}
-

@@ -3,9 +3,15 @@ name = "shdiary-gen"
 version = "0.1.0"
 edition = "2021"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[dependencies]
+md5 = "0.7.0"
 
 [dependencies.chrono]
 version = "0.4.22"
 default-features = false
 features = ["std"]
+
+[dependencies.image]
+version = "0.24.3"
+default-features = false
+features = ["avif"]

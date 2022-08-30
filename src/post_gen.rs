@@ -3,9 +3,14 @@ use std::io::{self, Write};
 use chrono::NaiveDate;
 
 use crate::html::HtmlWriter;
+use crate::image::ImagePath;
 use crate::sexp::Document;
 use crate::sexp::{Item, Text, TextItem};
 use crate::util::weekday_ja;
+
+pub type OutputDocument = Document<ImagePath>;
+
+pub type OutputItem = Item<ImagePath>;
 
 struct PostGenerator<'a, W: Write> {
     writer: HtmlWriter<'a, W>,
@@ -22,7 +27,7 @@ impl<'a, W: Write> PostGenerator<'a, W> {
         &mut self,
         year: i32,
         month: u32,
-        docs: Vec<Option<Document>>,
+        docs: Vec<Option<OutputDocument>>,
     ) -> io::Result<()> {
         let title = format!("Natuka.ge - {:4}/{:02}", year, month);
         self.writer.doctype()?;
@@ -60,7 +65,7 @@ impl<'a, W: Write> PostGenerator<'a, W> {
         Ok(())
     }
 
-    fn generate_daily(&mut self, date: &NaiveDate, doc: &Document) -> io::Result<()> {
+    fn generate_daily(&mut self, date: &NaiveDate, doc: &OutputDocument) -> io::Result<()> {
         self.writer.start("dt")?;
         self.write_date(date)?;
         self.writer.end("dt")?;
@@ -71,6 +76,7 @@ impl<'a, W: Write> PostGenerator<'a, W> {
                 Item::Text(txt) => self.write_paragraph(txt),
                 Item::List(li) => self.write_list(li),
                 Item::Header(txt) => self.write_header(txt),
+                Item::Images(images) => unimplemented!(),
             }?;
         }
         self.writer.end("dd")?;
@@ -105,7 +111,7 @@ impl<'a, W: Write> PostGenerator<'a, W> {
         self.writer.end("p")
     }
 
-    fn write_list(&mut self, items: &Vec<Item>) -> io::Result<()> {
+    fn write_list(&mut self, items: &Vec<OutputItem>) -> io::Result<()> {
         self.writer.start("ul")?;
         for item in items {
             match item {
@@ -116,6 +122,7 @@ impl<'a, W: Write> PostGenerator<'a, W> {
                 }
                 Item::List(li) => self.write_list(&li),
                 Item::Header(_) => unreachable!(),
+                Item::Images(_) => todo!(),
             }?;
         }
         self.writer.end("ul")
@@ -155,7 +162,7 @@ pub fn generate_monthly<W: Write>(
     writer: &mut W,
     year: i32,
     month: u32,
-    docs: Vec<Option<Document>>,
+    docs: Vec<Option<OutputDocument>>,
 ) -> io::Result<()> {
     let mut gen = PostGenerator::new(writer);
     gen.generate_monthly(year, month, docs)
