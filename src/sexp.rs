@@ -240,6 +240,7 @@ impl<R: Read> ParseCtx<R> {
                         break None;
                     }
                     b'"' => {
+                        self.seek()?;
                         let tmp = self.parse_string()?;
                         roll_up_until!(self, b')')?;
                         self.seek()?;

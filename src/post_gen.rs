@@ -122,7 +122,11 @@ impl<'a, W: Write> PostGenerator<'a, W> {
                 }
                 Item::List(li) => self.write_list(&li),
                 Item::Header(_) => unreachable!(),
-                Item::Images(images) => self.write_images(images)
+                Item::Images(images) => {
+                    self.writer.start("li")?;
+                    self.write_images(images)?;
+                    self.writer.end("li")
+                }
             }?;
         }
         self.writer.end("ul")
