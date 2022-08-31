@@ -269,18 +269,19 @@ impl<R: Read> ParseCtx<R> {
         let mut result = Vec::new();
         while let Some(chr) = self.chr() {
             match chr {
-                0x5c => {
+                b'\\' => {
                     self.seek()?;
                     if let Some(chr) = &self.chr() {
                         let chr = match chr {
-                            0x5c => 0x5c,
-                            0x22 => 0x22,
+                            b'\\' => b'\\',
+                            b'"' => b'"',
                             _ => return unexpected_chr(*chr),
                         };
                         result.push(chr);
+                        self.seek()?;
                     }
                 }
-                0x22 => {
+                b'"' => {
                     self.seek()?;
 
                     return String::from_utf8(result).map_err(Error::Utf8Error);
