@@ -1,11 +1,10 @@
+use crate::util::{calc_hash, push_path};
 use image::ImageFormat;
 use image::{io::Reader as ImageReader, ImageError};
+use log::{info, warn, debug};
 use std::fs::{create_dir_all, hard_link, File};
 use std::io::{BufReader, BufWriter, ErrorKind, Read, Write};
-
 use std::{io, path::PathBuf};
-
-use crate::util::{calc_hash, push_path};
 
 #[derive(Clone, Debug)]
 pub struct ImagePath {
@@ -64,6 +63,7 @@ impl ImageConverter {
     }
 
     pub fn convert_image(&self, file_name: String) -> ImgResult<ImagePath> {
+        debug!("Converting a image: \"{}\"", file_name);
         let src = push_path(&self.src_dir, &file_name);
         let base_name = file_name
             .split('.')
@@ -93,6 +93,7 @@ impl ImageConverter {
         let hash = calc_hash(&src).map_err(Error::IOError)?;
 
         if cache_hash.filter(|&it| it == hash).is_none() {
+            info!("Genrating a thumbnail of \"{}\".", &file_name);
             Self::save_hash(hash, &cache_hash_path)?;
             Self::generate_thumbnail(&src, &thumbnail_cache_path)?;
         }
@@ -102,6 +103,10 @@ impl ImageConverter {
         )
         .or_else(|err| {
             if err.kind() == ErrorKind::NotFound {
+                warn!(
+                    "The hash file exists, but the thumbnail doesn't exist: \"{}\".",
+                    file_name
+                );
                 Self::generate_thumbnail(&src, &thumbnail_cache_path)?;
                 Self::link_image(
                     &thumbnail_cache_path,

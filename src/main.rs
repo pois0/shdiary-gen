@@ -11,6 +11,7 @@ use std::{
 use crate::image::ImageConverter;
 use ::image::ImageError;
 use index_gen::generate_index;
+use log::{debug, info};
 use post_gen::{generate_monthly, OutputDocument, OutputItem};
 use sexp::{Document, ImageItem, Images, Item, ParseError, SourceDoucument, SourceItem};
 use util::push_path;
@@ -35,6 +36,8 @@ enum Error {
 type Result<T> = std::result::Result<T, Error>;
 
 fn main() -> Result<()> {
+    env_logger::init();
+
     let current_path = env::current_dir().map_err(Error::IOError)?;
     let cd_dir = fs::read_dir(current_path.clone()).map_err(Error::IOError)?;
     let public_path = push_path(&current_path, "public");
@@ -82,13 +85,16 @@ fn main() -> Result<()> {
 
         for month_dir in month_list.into_iter().filter_map(|res| res.ok()) {
             let day_list = fs::read_dir(month_dir.path()).map_err(Error::IOError)?;
+            let month_num = path_name_to_usize(&month_dir)?;
             let mut days = vec![None; 31];
 
             for day in day_list.into_iter().filter_map(|res| res.ok()) {
+                let day_num = path_name_to_usize(&day)?;
                 let reader = File::open(day.path())
                     .map(|f| BufReader::new(f))
                     .map_err(Error::IOError)?;
 
+                debug!("Parsing a post of {}/{}/{}", year_num, month_num, day_num);
                 let post = sexp::parse(reader).map_err(|err| match err {
                     sexp::Error::IOError(err) => Error::IOError(err),
                     sexp::Error::Utf8Error(err) => Error::Utf8Error(err),
@@ -97,14 +103,13 @@ fn main() -> Result<()> {
 
                 let output = handle_image(&image_converter, post)?;
 
-                let day_num = path_name_to_usize(&day)?;
                 days[day_num - 1] = Some(output);
             }
 
-            let month_num = path_name_to_usize(&month_dir)?;
             months[month_num - 1] = true;
 
             let file_name = push_path(&year_path, &format!("{:02}.html", month_num));
+            info!("Generating the daily of {}/{}", year_num, month_num);
             File::create(file_name)
                 .and_then(|f| {
                     let mut buf = BufWriter::new(f);
@@ -123,6 +128,7 @@ fn main() -> Result<()> {
     }
 
     let index_file_name = push_path(&public_path, "index.html");
+    info!("Generating the index file");
     File::create(index_file_name)
         .and_then(|f| {
             let mut buf = BufWriter::new(f);
