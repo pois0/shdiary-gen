@@ -8,16 +8,20 @@ use std::{
     string::FromUtf8Error,
 };
 
+use crate::image::ImageConverter;
+use ::image::ImageError;
 use index_gen::generate_index;
-use post_gen::generate_monthly;
-use sexp::ParseError;
+use post_gen::{generate_monthly, OutputDocument, OutputItem};
+use sexp::{Document, ImageItem, Images, Item, ParseError, SourceDoucument, SourceItem};
+use util::push_path;
 
 mod html;
+mod image;
 mod index_gen;
 mod post_gen;
 mod sexp;
-mod util;
 mod string_reader;
+mod util;
 
 #[derive(Debug)]
 enum Error {
@@ -25,12 +29,28 @@ enum Error {
     Utf8Error(FromUtf8Error),
     PathNameError(String),
     ParseError(ParseError),
+    ImageError(ImageError),
 }
 
-fn main() -> Result<(), Error> {
+type Result<T> = std::result::Result<T, Error>;
+
+fn main() -> Result<()> {
     let current_path = env::current_dir().map_err(Error::IOError)?;
     let cd_dir = fs::read_dir(current_path.clone()).map_err(Error::IOError)?;
     let public_path = push_path(&current_path, "public");
+    let cache_dir = {
+        let mut tmp = current_path.clone();
+        tmp.pop();
+        tmp.push(".build");
+        tmp.push("img");
+        tmp
+    };
+    let image_converter = ImageConverter::new(
+        push_path(&current_path, "img"),
+        push_path(&public_path, "img"),
+        cache_dir,
+    )
+    .map_err(Error::IOError)?;
     mkdir_if_not_exists(public_path.clone()).map_err(Error::IOError)?;
 
     let mut years: BTreeMap<u32, Vec<bool>> = BTreeMap::new();
@@ -75,8 +95,10 @@ fn main() -> Result<(), Error> {
                     sexp::Error::ParseError(err) => Error::ParseError(err),
                 })?;
 
-                            let day_num = path_name_to_usize(&day)?;
-                days[day_num - 1] = Some(post);
+                let output = handle_image(&image_converter, post)?;
+
+                let day_num = path_name_to_usize(&day)?;
+                days[day_num - 1] = Some(output);
             }
 
             let month_num = path_name_to_usize(&month_dir)?;
@@ -133,6 +155,50 @@ fn copy_source(src: &PathBuf, dst: &PathBuf) -> io::Result<()> {
     Ok(())
 }
 
+fn handle_image(converter: &ImageConverter, src: SourceDoucument) -> Result<OutputDocument> {
+    let mut contents = Vec::with_capacity(src.contents().len());
+    for item in src.into_contents() {
+        let output_item = handle_image_items(converter, item)?;
+        contents.push(output_item);
+    }
+    Ok(Document::new(contents))
+}
+
+fn handle_image_items(converter: &ImageConverter, src: SourceItem) -> Result<OutputItem> {
+    match src {
+        Item::Images(image) => {
+            let mut images = Vec::with_capacity(image.items.len());
+            for item in image.items {
+                let path = converter
+                    .convert_image(item.data)
+                    .map_err(|err| match err {
+                        crate::image::Error::ImageError(err) => Error::ImageError(err),
+                        crate::image::Error::IOError(err) => Error::IOError(err),
+                    })?;
+                images.push(ImageItem {
+                    data: path,
+                    caption: item.caption,
+                });
+            }
+
+            Ok(Item::Images(Images {
+                title: image.title,
+                items: images,
+            }))
+        }
+        Item::List(li) => {
+            let mut contents = Vec::with_capacity(li.len());
+            for item in li {
+                let output_item = handle_image_items(converter, item)?;
+                contents.push(output_item);
+            }
+            Ok(Item::List(contents))
+        }
+        Item::Text(x) => Ok(Item::Text(x)),
+        Item::Header(x) => Ok(Item::Header(x)),
+    }
+}
+
 fn mkdir_if_not_exists(path: PathBuf) -> io::Result<()> {
     let exists = path.try_exists()?;
     if !exists {
@@ -142,7 +208,7 @@ fn mkdir_if_not_exists(path: PathBuf) -> io::Result<()> {
     Ok(())
 }
 
-fn path_name_to_usize(entry: &DirEntry) -> Result<usize, Error> {
+fn path_name_to_usize(entry: &DirEntry) -> Result<usize> {
     Path::new(&entry.file_name())
         .file_stem()
         .ok_or_else(|| path_name_err(&entry))
@@ -161,10 +227,3 @@ fn path_name_err(day: &DirEntry) -> Error {
         .map_or("".to_string(), |s| s.to_string());
     Error::PathNameError(path)
 }
-
-fn push_path(origin: &PathBuf, elem: &str) -> PathBuf {
-    let mut tmp = origin.clone();
-    tmp.push(elem);
-    tmp
-}
-

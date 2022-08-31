@@ -1,21 +1,27 @@
 use std::io::{self, Read};
 use std::string::{FromUtf8Error, String};
 
-use crate::string_reader::StringReader;
 use crate::roll_up_until;
+use crate::string_reader::StringReader;
 
 #[derive(Clone, Debug)]
-pub struct Document {
-    contents: Vec<Item>,
+pub struct Document<T: Sized + Clone> {
+    contents: Vec<Item<T>>,
 }
 
-impl Document {
-    pub const fn new(contents: Vec<Item>) -> Self {
+pub type SourceDoucument = Document<String>;
+
+impl<T: Sized + Clone> Document<T> {
+    pub const fn new(contents: Vec<Item<T>>) -> Self {
         Document { contents }
     }
 
-    pub const fn contents(self: &Self) -> &Vec<Item> {
+    pub const fn contents(self: &Self) -> &Vec<Item<T>> {
         &self.contents
+    }
+
+    pub fn into_contents(self) -> Vec<Item<T>> {
+        self.contents
     }
 
     pub const fn empty() -> Self {
@@ -24,11 +30,14 @@ impl Document {
 }
 
 #[derive(Clone, Debug)]
-pub enum Item {
+pub enum Item<T: Sized + Clone> {
     Text(Text),
-    List(Vec<Item>),
+    List(Vec<Item<T>>),
     Header(String),
+    Images(Images<T>),
 }
+
+pub type SourceItem = Item<String>;
 
 pub type Text = Vec<TextItem>;
 
@@ -44,6 +53,18 @@ pub enum TextItem {
 pub struct WebLink {
     pub title: String,
     pub href: String,
+}
+
+#[derive(Clone, Debug)]
+pub struct Images<T: Sized + Clone> {
+    pub title: String,
+    pub items: Vec<ImageItem<T>>,
+}
+
+#[derive(Clone, Debug)]
+pub struct ImageItem<T: Sized + Clone> {
+    pub data: T,
+    pub caption: Option<String>,
 }
 
 #[derive(Debug)]
@@ -67,7 +88,6 @@ struct ParseCtx<R: Read> {
 }
 
 impl<R: Read> ParseCtx<R> {
-
     fn new(reader: StringReader<R>) -> Self {
         Self { reader }
     }
@@ -80,23 +100,24 @@ impl<R: Read> ParseCtx<R> {
         self.reader.seek().map_err(Error::IOError)
     }
 
-    fn parse_root(&mut self) -> ParseResult<Document> {
+    fn parse_root(&mut self) -> ParseResult<SourceDoucument> {
         roll_up_until!(self, b'(')?;
         self.seek()?;
         self.parse_exprs().map(Document::new)
     }
 
-    fn parse_expr(&mut self) -> ParseResult<Item> {
+    fn parse_expr(&mut self) -> ParseResult<SourceItem> {
         let keyword = self.parse_keyword()?;
         match keyword.as_str() {
             "txt" | "text" => self.parse_text(),
             "li" | "list" => self.parse_list(),
             "h" | "header" => self.parse_header(),
+            "img" | "image" => self.parse_image(),
             _ => unexpected_keyword(keyword),
         }
     }
 
-    fn parse_text(&mut self) -> ParseResult<Item> {
+    fn parse_text(&mut self) -> ParseResult<SourceItem> {
         let mut result = Vec::new();
         while let Some(chr) = self.chr() {
             match chr {
@@ -154,9 +175,7 @@ impl<R: Read> ParseCtx<R> {
 
     fn parse_post(&mut self) -> ParseResult<TextItem> {
         let year = self.expect_number()?;
-
         let month = self.expect_number()?;
-
         let day = self.expect_number()?;
 
         roll_up_until!(self, b')')?;
@@ -165,7 +184,7 @@ impl<R: Read> ParseCtx<R> {
         Ok(TextItem::PostLink((year, month, day)))
     }
 
-    fn parse_header(&mut self) -> ParseResult<Item> {
+    fn parse_header(&mut self) -> ParseResult<SourceItem> {
         roll_up_until!(self, b'"', {
             self.seek()?;
             let string = self.parse_string()?;
@@ -175,8 +194,68 @@ impl<R: Read> ParseCtx<R> {
         })
     }
 
-    fn parse_list(&mut self) -> ParseResult<Item> {
+    fn parse_list(&mut self) -> ParseResult<SourceItem> {
         self.parse_exprs().map(Item::List)
+    }
+
+    fn parse_image(&mut self) -> ParseResult<SourceItem> {
+        let title = self.expect_string()?;
+
+        let mut items = Vec::new();
+        loop {
+            if let Some(chr) = self.chr() {
+                match chr {
+                    0x20 | 0x09 | 0x0a | 0x0c | 0x0d => {
+                        self.seek()?;
+                    }
+                    b'(' => {
+                        self.seek()?;
+                        let item = self.parse_image_items()?;
+                        items.push(item);
+                    }
+                    b')' => {
+                        self.seek()?;
+                        break;
+                    }
+                    _ => return unexpected_chr(chr),
+                }
+            } else {
+                return unexpected_eof();
+            }
+        }
+
+        Ok(Item::Images(Images { title, items }))
+    }
+
+    fn parse_image_items(&mut self) -> ParseResult<ImageItem<String>> {
+        let path = self.expect_string()?;
+        let caption = loop {
+            if let Some(chr) = self.chr() {
+                match chr {
+                    0x20 | 0x09 | 0x0a | 0x0c | 0x0d => {
+                        self.seek()?;
+                    }
+                    b')' => {
+                        self.seek()?;
+                        break None;
+                    }
+                    b'"' => {
+                        let tmp = self.parse_string()?;
+                        roll_up_until!(self, b')')?;
+                        self.seek()?;
+                        break Some(tmp);
+                    }
+                    _ => return unexpected_chr(chr),
+                }
+            } else {
+                return unexpected_eof();
+            }
+        };
+
+        Ok(ImageItem {
+            data: path,
+            caption,
+        })
     }
 
     fn expect_string(&mut self) -> ParseResult<String> {
@@ -252,7 +331,7 @@ impl<R: Read> ParseCtx<R> {
         unexpected_eof()
     }
 
-    fn parse_exprs(&mut self) -> ParseResult<Vec<Item>> {
+    fn parse_exprs(&mut self) -> ParseResult<Vec<SourceItem>> {
         let mut result = Vec::new();
 
         while let Some(chr) = self.chr() {
@@ -282,7 +361,7 @@ impl<R: Read> ParseCtx<R> {
     }
 }
 
-pub fn parse<R: Read>(read: R) -> ParseResult<Document> {
+pub fn parse<R: Read>(read: R) -> ParseResult<SourceDoucument> {
     let reader = StringReader::new(read).map_err(Error::IOError)?;
     reader.map_or(Ok(Document::empty()), |reader| {
         ParseCtx::new(reader).parse_root()
@@ -310,15 +389,11 @@ macro_rules! roll_up_until {
                     0x20 | 0x09 | 0x0a | 0x0c | 0x0d => {
                         $reader.seek()?;
                     }
-                    $cond => {
-                        break '__roll_up_until_lablel Ok(())
-                    }
-                    _ => {
-                        break '__roll_up_until_lablel unexpected_chr(chr)
-                    }
+                    $cond => break '__roll_up_until_lablel Ok(()),
+                    _ => break '__roll_up_until_lablel unexpected_chr(chr),
                 }
             } else {
-                break '__roll_up_until_lablel unexpected_eof()
+                break '__roll_up_until_lablel unexpected_eof();
             }
         }
     };
@@ -329,15 +404,11 @@ macro_rules! roll_up_until {
                     0x20 | 0x09 | 0x0a | 0x0c | 0x0d => {
                         $reader.seek()?;
                     }
-                    $cond => {
-                        break '__roll_up_until_lablel ($then)
-                    }
-                    _ => {
-                        break '__roll_up_until_lablel unexpected_chr(chr)
-                    }
+                    $cond => break '__roll_up_until_lablel ($then),
+                    _ => break '__roll_up_until_lablel unexpected_chr(chr),
                 }
             } else {
-                break '__roll_up_until_lablel unexpected_eof()
+                break '__roll_up_until_lablel unexpected_eof();
             }
         }
     };
