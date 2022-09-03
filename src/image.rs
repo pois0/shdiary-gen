@@ -1,8 +1,8 @@
 use crate::util::{calc_hash, push_path};
 use image::ImageFormat;
 use image::{io::Reader as ImageReader, ImageError};
-use log::{info, warn, debug};
-use std::fs::{create_dir_all, hard_link, File};
+use log::{debug, info, warn};
+use std::fs::{self, hard_link, File};
 use std::io::{BufReader, BufWriter, ErrorKind, Read, Write};
 use std::{io, path::PathBuf};
 
@@ -52,9 +52,9 @@ pub struct ImageConverter {
 
 impl ImageConverter {
     pub fn new(src_dir: PathBuf, dst_dir: PathBuf, cache_dir: PathBuf) -> io::Result<Self> {
-        create_dir_all(&src_dir)?;
-        create_dir_all(&dst_dir)?;
-        create_dir_all(&cache_dir)?;
+        Self::create_dir_all(&src_dir)?;
+        Self::create_dir_all(&dst_dir)?;
+        Self::create_dir_all(&cache_dir)?;
         Ok(Self {
             src_dir,
             dst_dir,
@@ -145,5 +145,15 @@ impl ImageConverter {
             .map_err(Error::ImageError)?;
 
         Ok(())
+    }
+
+    fn create_dir_all(path: &PathBuf) -> io::Result<()> {
+        fs::create_dir_all(path).or_else(|err| {
+            if err.kind() == ErrorKind::AlreadyExists {
+                Err(err)
+            } else {
+                Ok(())
+            }
+        })
     }
 }

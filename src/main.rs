@@ -1,11 +1,12 @@
 use std::{
     collections::BTreeMap,
     env::{self, VarError},
+    ffi::OsString,
     fmt::Debug,
     fs::{self, metadata, DirEntry, File},
     io::{self, BufReader, BufWriter},
     path::{Path, PathBuf},
-    string::FromUtf8Error, ffi::OsString,
+    string::FromUtf8Error,
 };
 
 use crate::image::ImageConverter;
