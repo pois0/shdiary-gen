@@ -1,11 +1,11 @@
 use std::{
     collections::BTreeMap,
-    env,
+    env::{self, VarError},
     fmt::Debug,
     fs::{self, metadata, DirEntry, File},
     io::{self, BufReader, BufWriter},
     path::{Path, PathBuf},
-    string::FromUtf8Error,
+    string::FromUtf8Error, ffi::OsString,
 };
 
 use crate::image::ImageConverter;
@@ -31,6 +31,7 @@ enum Error {
     PathNameError(String),
     ParseError(ParseError),
     ImageError(ImageError),
+    NotUnicode(OsString),
 }
 
 type Result<T> = std::result::Result<T, Error>;
@@ -39,12 +40,14 @@ fn main() -> Result<()> {
     env_logger::init();
 
     let current_path = env::current_dir().map_err(Error::IOError)?;
+    let cache_dir_str = env::var("CACHE_DIR").or_else(|err| match err {
+        VarError::NotPresent => Ok("/opt/buildhome/cache".to_string()),
+        VarError::NotUnicode(x) => Err(Error::NotUnicode(x)),
+    })?;
     let cd_dir = fs::read_dir(current_path.clone()).map_err(Error::IOError)?;
     let public_path = push_path(&current_path, "public");
     let cache_dir = {
-        let mut tmp = current_path.clone();
-        tmp.pop();
-        tmp.push(".build");
+        let mut tmp = PathBuf::from(cache_dir_str);
         tmp.push("img");
         tmp
     };
