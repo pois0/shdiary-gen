@@ -2,7 +2,7 @@ use crate::util::{calc_hash, push_path};
 use image::ImageFormat;
 use image::{io::Reader as ImageReader, ImageError};
 use log::{debug, info, warn};
-use std::fs::{self, hard_link, File};
+use std::fs::{self, copy, File};
 use std::io::{BufReader, BufWriter, ErrorKind, Read, Write};
 use std::{io, path::PathBuf};
 
@@ -97,7 +97,7 @@ impl ImageConverter {
             Self::save_hash(hash, &cache_hash_path)?;
             Self::generate_thumbnail(&src, &thumbnail_cache_path)?;
         }
-        Self::link_image(
+        Self::copy_image(
             &thumbnail_cache_path,
             &push_path(&self.dst_dir, &image_path.thumbnail_name()),
         )
@@ -108,7 +108,7 @@ impl ImageConverter {
                     file_name
                 );
                 Self::generate_thumbnail(&src, &thumbnail_cache_path)?;
-                Self::link_image(
+                Self::copy_image(
                     &thumbnail_cache_path,
                     &push_path(&self.dst_dir, &image_path.thumbnail_name()),
                 )
@@ -117,7 +117,7 @@ impl ImageConverter {
                 Err(Error::IOError(err))
             }
         })?;
-        Self::link_image(&src, &push_path(&self.dst_dir, &image_path.actual_name()))
+        Self::copy_image(&src, &push_path(&self.dst_dir, &image_path.actual_name()))
             .map_err(Error::IOError)?;
         Ok(image_path)
     }
@@ -129,8 +129,9 @@ impl ImageConverter {
         Ok(())
     }
 
-    fn link_image(original: &PathBuf, link: &PathBuf) -> io::Result<()> {
-        hard_link(original, link)
+    fn copy_image(original: &PathBuf, link: &PathBuf) -> io::Result<()> {
+        copy(original, link)?;
+        Ok(())
     }
 
     fn generate_thumbnail(src: &PathBuf, dst: &PathBuf) -> ImgResult<()> {
