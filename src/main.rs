@@ -42,7 +42,7 @@ fn main() -> Result<()> {
 
     let current_path = env::current_dir().map_err(Error::IOError)?;
     let cache_dir_str = env::var("CACHE_DIR").or_else(|err| match err {
-        VarError::NotPresent => Ok("/opt/buildhome/cache".to_string()),
+        VarError::NotPresent => Ok(".cache".to_string()),
         VarError::NotUnicode(x) => Err(Error::NotUnicode(x)),
     })?;
     let cd_dir = fs::read_dir(current_path.clone()).map_err(Error::IOError)?;

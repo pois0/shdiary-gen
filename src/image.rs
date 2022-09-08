@@ -92,11 +92,23 @@ impl ImageConverter {
         };
         let hash = calc_hash(&src).map_err(Error::IOError)?;
 
-        if cache_hash.filter(|&it| it == hash).is_none() {
-            info!("Genrating a thumbnail of \"{}\".", &file_name);
+        loop {
+            if let Some(cache_hash) = cache_hash {
+                if cache_hash == hash {
+                    info!("Unchanged image: \"{}\"", &file_name);
+                    break;
+                } else {
+                    info!("Updated image: \"{}\"", &file_name);
+                }
+            } else {
+                info!("New image: \"{}\"", &file_name);
+            }
             Self::save_hash(hash, &cache_hash_path)?;
             Self::generate_thumbnail(&src, &thumbnail_cache_path)?;
+
+            break;
         }
+
         Self::copy_image(
             &thumbnail_cache_path,
             &push_path(&self.dst_dir, &image_path.thumbnail_name()),
