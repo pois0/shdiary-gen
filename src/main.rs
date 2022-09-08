@@ -49,7 +49,7 @@ fn main() -> Result<()> {
     let public_path = push_path(&current_path, "public");
     let cache_dir = {
         let mut tmp = PathBuf::from(cache_dir_str);
-        tmp.push("img");
+        tmp.push(".build");
         tmp
     };
     let image_converter = ImageConverter::new(
