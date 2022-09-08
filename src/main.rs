@@ -42,20 +42,20 @@ fn main() -> Result<()> {
 
     let current_path = env::current_dir().map_err(Error::IOError)?;
     let cache_dir_str = env::var("CACHE_DIR").or_else(|err| match err {
-        VarError::NotPresent => Ok(".cache".to_string()),
+        VarError::NotPresent => Ok("cache".to_string()),
         VarError::NotUnicode(x) => Err(Error::NotUnicode(x)),
     })?;
     let cd_dir = fs::read_dir(current_path.clone()).map_err(Error::IOError)?;
     let public_path = push_path(&current_path, "public");
-    let cache_dir = {
+    let image_cache_dir = {
         let mut tmp = PathBuf::from(cache_dir_str);
-        tmp.push(".build");
+        tmp.push("img");
         tmp
     };
     let image_converter = ImageConverter::new(
         push_path(&current_path, "img"),
         push_path(&public_path, "img"),
-        cache_dir,
+        image_cache_dir,
     )
     .map_err(Error::IOError)?;
     mkdir_if_not_exists(public_path.clone()).map_err(Error::IOError)?;
