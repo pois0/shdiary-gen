@@ -4,20 +4,7 @@ use std::{
     path::PathBuf,
 };
 
-use chrono::{Datelike, Weekday};
 use xxhash_rust::xxh3::Xxh3;
-
-pub fn weekday_ja<D: Datelike>(date: &D) -> &str {
-    match date.weekday() {
-        Weekday::Mon => "月",
-        Weekday::Tue => "火",
-        Weekday::Wed => "水",
-        Weekday::Thu => "木",
-        Weekday::Fri => "金",
-        Weekday::Sat => "土",
-        Weekday::Sun => "日",
-    }
-}
 
 pub fn push_path(origin: &PathBuf, elem: &str) -> PathBuf {
     let mut tmp = origin.clone();

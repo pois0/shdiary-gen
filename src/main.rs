@@ -24,6 +24,7 @@ mod post_gen;
 mod sexp;
 mod string_reader;
 mod util;
+mod date;
 
 #[derive(Debug)]
 enum Error {
@@ -80,7 +81,7 @@ fn main() -> Result<()> {
         }
 
         let year_num = if let Ok(num) = path_name_to_usize(&year_dir) {
-            num
+            num as u32
         } else {
             continue;
         };
@@ -117,7 +118,7 @@ fn main() -> Result<()> {
             File::create(file_name)
                 .and_then(|f| {
                     let mut buf = BufWriter::new(f);
-                    generate_monthly(&mut buf, year_num as i32, month_num as u32, days)
+                    generate_monthly(&mut buf, year_num, month_num as u32, days)
                 })
                 .map_err(Error::IOError)?;
         }

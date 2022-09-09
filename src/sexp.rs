@@ -46,7 +46,7 @@ pub enum TextItem {
     RawString(String),
     Bold(String),
     WebLink(WebLink),
-    PostLink((u16, u16, u16)),
+    PostLink((u32, u32, u32)),
 }
 
 #[derive(Clone, Debug)]
@@ -296,18 +296,18 @@ impl<R: Read> ParseCtx<R> {
         unexpected_eof()
     }
 
-    fn expect_number(&mut self) -> ParseResult<u16> {
+    fn expect_number(&mut self) -> ParseResult<u32> {
         roll_up_until!(self, b'0'..=b'9')?;
         self.parse_number()
     }
 
-    fn parse_number(&mut self) -> ParseResult<u16> {
-        let mut result = 0u16;
+    fn parse_number(&mut self) -> ParseResult<u32> {
+        let mut result = 0;
         while let Some(chr) = self.chr() {
             match chr {
                 b'0'..=b'9' => {
                     self.seek()?;
-                    result = result * 10 + u16::from(chr - b'0');
+                    result = result * 10 + u32::from(chr - b'0');
                 }
                 _ => {
                     return Ok(result);

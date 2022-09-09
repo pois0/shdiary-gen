@@ -12,11 +12,6 @@ features = ["humantime", "termcolor"]
 version = "0.4.17"
 features = ["std"]
 
-[dependencies.chrono]
-version = "0.4.22"
-default-features = false
-features = ["std"]
-
 [dependencies.image]
 version = "0.24.3"
 default-features = false

@@ -1,12 +1,10 @@
 use std::io::{self, Write};
 
-use chrono::NaiveDate;
-
+use crate::date::Date;
 use crate::html::HtmlWriter;
 use crate::image::ImagePath;
 use crate::sexp::{Document, Images};
 use crate::sexp::{Item, Text, TextItem};
-use crate::util::weekday_ja;
 
 pub type OutputDocument = Document<ImagePath>;
 
@@ -25,7 +23,7 @@ impl<'a, W: Write> PostGenerator<'a, W> {
 
     fn generate_monthly(
         &mut self,
-        year: i32,
+        year: u32,
         month: u32,
         docs: Vec<Option<OutputDocument>>,
     ) -> io::Result<()> {
@@ -55,7 +53,8 @@ impl<'a, W: Write> PostGenerator<'a, W> {
             .filter_map(|(day, doc)| doc.map(|doc| (day, doc)))
             .rev()
         {
-            let date = NaiveDate::from_ymd(year, month, (day + 1) as u32);
+            let date = Date::new(year, month, (day + 1) as u32)
+                .unwrap_or_else(|| panic!("Wrong date: ({}, {}, {})", year, month, day + 1));
             self.generate_daily(&date, &doc)?;
         }
 
@@ -65,7 +64,7 @@ impl<'a, W: Write> PostGenerator<'a, W> {
         Ok(())
     }
 
-    fn generate_daily(&mut self, date: &NaiveDate, doc: &OutputDocument) -> io::Result<()> {
+    fn generate_daily(&mut self, date: &Date, doc: &OutputDocument) -> io::Result<()> {
         self.writer.start("dt")?;
         self.write_date(date)?;
         self.writer.end("dt")?;
@@ -84,16 +83,16 @@ impl<'a, W: Write> PostGenerator<'a, W> {
         Ok(())
     }
 
-    fn write_date(&mut self, date: &NaiveDate) -> io::Result<()> {
-        let id = date.format("%d").to_string();
+    fn write_date(&mut self, date: &Date) -> io::Result<()> {
+        let id = format!("{}", date.day());
         self.writer.start_attr("h2", &[("id", &id)])?;
         self.writer
             .start_attr("a", &[("href", &format!("#{}", id))])?;
         write!(
             self.writer,
             "{} ({})",
-            &date.format("%Y/%m/%d"),
-            weekday_ja(date)
+            format!("{}/{:02}/{:02}", date.year(), date.month(), date.day()),
+            date.weekday_ja()
         )?;
         self.writer.end("a")?;
         self.writer.end("h2")
@@ -194,7 +193,7 @@ impl<'a, W: Write> PostGenerator<'a, W> {
 
 pub fn generate_monthly<W: Write>(
     writer: &mut W,
-    year: i32,
+    year: u32,
     month: u32,
     docs: Vec<Option<OutputDocument>>,
 ) -> io::Result<()> {
