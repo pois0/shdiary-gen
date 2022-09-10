@@ -90,7 +90,7 @@ impl ImageConverter {
             .to_string();
         let image_path = ImageName { name: base_name };
 
-        let thumbnail_cache_path = push_path(&self.cache_dir, &file_name);
+        let thumbnail_cache_path = push_path(&self.cache_dir, &image_path.thumbnail_name());
 
         let cache_hash_path = push_path(&self.cache_dir, &image_path.hash_name());
         let cache_hash = loop {
@@ -113,7 +113,7 @@ impl ImageConverter {
         let size = loop {
             if let Some(cache_hash) = cache_hash {
                 if cache_hash == hash {
-                    info!("Unchanged image: \"{}\"", &file_name);
+                    debug!("Unchanged image: \"{}\"", &file_name);
                     break Self::get_image_size(&thumbnail_cache_path)?;
                 } else {
                     info!("Updated image: \"{}\"", &file_name);
