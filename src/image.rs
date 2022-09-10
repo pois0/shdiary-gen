@@ -1,5 +1,5 @@
 use crate::util::{calc_hash, push_path};
-use image::ImageFormat;
+use image::{image_dimensions, ImageFormat};
 use image::{io::Reader as ImageReader, ImageError};
 use log::{debug, info, warn};
 use std::fs::{self, copy, File};
@@ -8,32 +8,50 @@ use std::{io, path::PathBuf};
 
 #[derive(Clone, Debug)]
 pub struct ImagePath {
-    image_name: String,
+    image_name: ImageName,
+    size: ImageSize,
+}
+
+#[derive(Clone, Debug)]
+pub struct ImageName {
+    name: String,
+}
+
+#[derive(Clone, Debug)]
+pub struct ImageSize {
+    width: u32,
+    height: u32,
 }
 
 impl ImagePath {
-    pub const fn new(image_name: String) -> ImagePath {
-        Self { image_name }
+    pub const fn height(&self) -> u32 {
+        self.size.height
+    }
+
+    pub const fn width(&self) -> u32 {
+        self.size.width
     }
 
     pub fn thumbnail_path(&self) -> String {
-        format!("/img/{}", self.thumbnail_name())
-    }
-
-    fn thumbnail_name(&self) -> String {
-        format!("{}-thumb.jpeg", self.image_name)
+        format!("/img/{}", self.image_name.thumbnail_name())
     }
 
     pub fn actual_path(&self) -> String {
-        format!("/img/{}", self.actual_name())
+        format!("/img/{}", self.image_name.actual_name())
+    }
+}
+
+impl ImageName {
+    fn thumbnail_name(&self) -> String {
+        format!("{}-thumb.jpeg", self.name)
     }
 
     fn actual_name(&self) -> String {
-        format!("{}.webp", self.image_name)
+        format!("{}.webp", self.name)
     }
 
     fn hash_name(&self) -> String {
-        format!("{}.xxh3", self.image_name)
+        format!("{}.xxh3", self.name)
     }
 }
 
@@ -70,7 +88,7 @@ impl ImageConverter {
             .nth(0)
             .unwrap_or(&file_name)
             .to_string();
-        let image_path = ImagePath::new(base_name);
+        let image_path = ImageName { name: base_name };
 
         let thumbnail_cache_path = push_path(&self.cache_dir, &file_name);
 
@@ -92,11 +110,11 @@ impl ImageConverter {
         };
         let hash = calc_hash(&src).map_err(Error::IOError)?;
 
-        loop {
+        let size = loop {
             if let Some(cache_hash) = cache_hash {
                 if cache_hash == hash {
                     info!("Unchanged image: \"{}\"", &file_name);
-                    break;
+                    break Self::get_image_size(&thumbnail_cache_path)?;
                 } else {
                     info!("Updated image: \"{}\"", &file_name);
                 }
@@ -104,10 +122,10 @@ impl ImageConverter {
                 info!("New image: \"{}\"", &file_name);
             }
             Self::save_hash(hash, &cache_hash_path)?;
-            Self::generate_thumbnail(&src, &thumbnail_cache_path)?;
+            let size = Self::generate_thumbnail(&src, &thumbnail_cache_path)?;
 
-            break;
-        }
+            break size;
+        };
 
         Self::copy_image(
             &thumbnail_cache_path,
@@ -131,7 +149,10 @@ impl ImageConverter {
         })?;
         Self::copy_image(&src, &push_path(&self.dst_dir, &image_path.actual_name()))
             .map_err(Error::IOError)?;
-        Ok(image_path)
+        Ok(ImagePath {
+            image_name: image_path,
+            size: size,
+        })
     }
 
     fn save_hash(hash: u64, path: &PathBuf) -> ImgResult<()> {
@@ -146,7 +167,7 @@ impl ImageConverter {
         Ok(())
     }
 
-    fn generate_thumbnail(src: &PathBuf, dst: &PathBuf) -> ImgResult<()> {
+    fn generate_thumbnail(src: &PathBuf, dst: &PathBuf) -> ImgResult<ImageSize> {
         let reader = File::open(src).map_err(Error::IOError)?;
         let img = ImageReader::with_format(BufReader::new(reader), ImageFormat::WebP)
             .decode()
@@ -157,7 +178,15 @@ impl ImageConverter {
         img.write_to(&mut BufWriter::new(writer), ImageFormat::Jpeg)
             .map_err(Error::ImageError)?;
 
-        Ok(())
+        Ok(ImageSize {
+            width: img.width(),
+            height: img.height(),
+        })
+    }
+
+    fn get_image_size(path: &PathBuf) -> ImgResult<ImageSize> {
+        let (width, height) = image_dimensions(path).map_err(Error::ImageError)?;
+        Ok(ImageSize { width, height })
     }
 
     fn create_dir_all(path: &PathBuf) -> io::Result<()> {

@@ -3,7 +3,7 @@ use std::io::{self, Write};
 use crate::date::Date;
 use crate::html::HtmlWriter;
 use crate::image::ImagePath;
-use crate::sexp::{Document, Images};
+use crate::sexp::{Document, ImageItem, Images};
 use crate::sexp::{Item, Text, TextItem};
 
 pub type OutputDocument = Document<ImagePath>;
@@ -165,12 +165,18 @@ impl<'a, W: Write> PostGenerator<'a, W> {
         self.writer.start("table")?;
         self.writer.start("tbody")?;
         self.writer.start("tr")?;
-        for image in &images.items {
+        for ImageItem { data, .. } in &images.items {
             self.writer.start("td")?;
             self.writer
-                .start_attr("a", &[("href", &image.data.actual_path())])?;
-            self.writer
-                .start_attr("img", &[("src", &image.data.thumbnail_path())])?;
+                .start_attr("a", &[("href", &data.actual_path())])?;
+            self.writer.start_attr(
+                "img",
+                &[
+                    ("src", &data.thumbnail_path()),
+                    ("width", &data.width().to_string()),
+                    ("height", &data.height().to_string()),
+                ],
+            )?;
             self.writer.end("a")?;
             self.writer.end("td")?;
         }

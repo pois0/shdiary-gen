@@ -17,6 +17,7 @@ use post_gen::{generate_monthly, OutputDocument, OutputItem};
 use sexp::{Document, ImageItem, Images, Item, ParseError, SourceDoucument, SourceItem};
 use util::push_path;
 
+mod date;
 mod html;
 mod image;
 mod index_gen;
@@ -24,7 +25,6 @@ mod post_gen;
 mod sexp;
 mod string_reader;
 mod util;
-mod date;
 
 #[derive(Debug)]
 enum Error {
