@@ -192,9 +192,9 @@ impl ImageConverter {
     fn create_dir_all(path: &PathBuf) -> io::Result<()> {
         fs::create_dir_all(path).or_else(|err| {
             if err.kind() == ErrorKind::AlreadyExists {
-                Err(err)
-            } else {
                 Ok(())
+            } else {
+                Err(err)
             }
         })
     }
