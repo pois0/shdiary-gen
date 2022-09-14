@@ -44,7 +44,11 @@ impl Date {
     }
 
     pub const fn weekday_ja(&self) -> &str {
-        let month = if self.month <= 2 { self.month + 12 } else { self.month };
+        let month = if self.month <= 2 {
+            self.month + 12
+        } else {
+            self.month
+        };
 
         let c = self.year / 100;
         let y = self.year % 100;

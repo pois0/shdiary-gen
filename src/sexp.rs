@@ -365,9 +365,11 @@ impl<R: Read> ParseCtx<R> {
 
 pub fn parse<R: Read>(read: R) -> ParseResult<SourceDoucument> {
     let reader = StringReader::new(read).map_err(Error::IOError)?;
-    reader.map_or(Ok(Document::empty()), |reader| {
+    if let Some(reader) = reader {
         ParseCtx::new(reader).parse_root()
-    })
+    } else {
+        Ok(Document::empty())
+    }
 }
 
 fn unexpected_eof<T>() -> Result<T, Error> {

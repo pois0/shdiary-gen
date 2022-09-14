@@ -18,15 +18,11 @@ impl<'a, W: Write> HtmlWriter<'a, W> {
         name: &'str str,
         attr: &[(&'str str, &'str str)],
     ) -> io::Result<()> {
-        let attributes = attr
-            .iter()
-            .map(|(k, v)| format!(r#"{}="{}""#, k, v))
-            .reduce(|mut acc, e| {
-                acc.push_str(&e);
-                acc
-            })
-            .map_or("".to_string(), |s| s);
-        write!(self.writer, "<{} {}>", name, &attributes)
+        let attributes = attr.iter().fold(String::new(), |mut acc, (k, v)| {
+            acc.push_str(&format!(r#" {}="{}""#, k, v));
+            acc
+        });
+        write!(self.writer, "<{}{}>", name, &attributes)
     }
 
     pub fn end<'slf, 'str>(&'slf mut self, name: &'str str) -> io::Result<()> {

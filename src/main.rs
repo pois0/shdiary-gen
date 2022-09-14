@@ -38,12 +38,14 @@ enum Error {
 
 type Result<T> = std::result::Result<T, Error>;
 
+const DEFAULT_CACHE_DIR: &str = "cache";
+
 fn main() -> Result<()> {
     env_logger::init();
 
     let current_path = env::current_dir().map_err(Error::IOError)?;
     let cache_dir_str = env::var("CACHE_DIR").or_else(|err| match err {
-        VarError::NotPresent => Ok("cache".to_string()),
+        VarError::NotPresent => Ok(DEFAULT_CACHE_DIR.to_string()),
         VarError::NotUnicode(x) => Err(Error::NotUnicode(x)),
     })?;
     let cd_dir = fs::read_dir(current_path.clone()).map_err(Error::IOError)?;
