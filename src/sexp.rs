@@ -47,6 +47,7 @@ pub enum TextItem {
     Bold(String),
     WebLink(WebLink),
     PostLink((u32, u32, u32)),
+    Code(String),
 }
 
 #[derive(Clone, Debug)]
@@ -151,6 +152,7 @@ impl<R: Read> ParseCtx<R> {
             "a" => self.parse_weblink(),
             "b" => self.parse_bold(),
             "p" => self.parse_post(),
+            "code" => self.parse_code(),
             _ => unexpected_keyword(keyword),
         }
     }
@@ -182,6 +184,15 @@ impl<R: Read> ParseCtx<R> {
         self.seek()?;
 
         Ok(TextItem::PostLink((year, month, day)))
+    }
+
+    fn parse_code(&mut self) -> ParseResult<TextItem> {
+        let string = self.expect_string()?;
+
+        roll_up_until!(self, b')')?;
+        self.seek()?;
+
+        Ok(TextItem::Code(string))
     }
 
     fn parse_header(&mut self) -> ParseResult<SourceItem> {

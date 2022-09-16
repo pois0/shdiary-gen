@@ -155,6 +155,11 @@ impl<'a, W: Write> PostGenerator<'a, W> {
                     self.writer.end("a")?;
                     write!(self.writer, ")")?;
                 }
+                TextItem::Code(txt) => {
+                    self.writer.start("code")?;
+                    write!(self.writer, "{}", txt)?;
+                    self.writer.end("code")?;
+                }
             }
         }
         Ok(())
