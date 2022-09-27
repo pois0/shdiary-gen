@@ -18,7 +18,8 @@ impl<'a, W: Write> HtmlWriter<'a, W> {
         name: &'str str,
         attr: &[(&'str str, &'str str)],
     ) -> io::Result<()> {
-        let attributes = attr.iter().fold(String::new(), |mut acc, (k, v)| {
+        let capacity = attr.iter().fold(0, |acc, (k, v)| acc + 4 + k.len() + v.len());
+        let attributes = attr.iter().fold(String::with_capacity(capacity), |mut acc, (k, v)| {
             acc.push_str(&format!(r#" {}="{}""#, k, v));
             acc
         });
