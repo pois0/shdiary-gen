@@ -1,6 +1,11 @@
+#![feature(inherit_associated_types)]
 use std::{
     io::{self, Read},
+    iter::Skip,
+    ops::Index,
+    slice::SliceIndex,
     string::FromUtf8Error,
+    vec::IntoIter,
 };
 
 use crate::string_reader::StringReader;
@@ -13,16 +18,16 @@ pub enum Expression {
     Integer(u32),
 }
 
-#[derive(Clone, Copy)]
-pub struct Application<'a> {
-    raw: &'a [Expression],
+#[derive(Clone)]
+pub struct Application {
+    raw: Vec<Expression>,
 }
 
-impl<'a> Application<'a> {
-    pub fn new(tuple: &'a Vec<Expression>) -> Self {
-        Self {
-            raw: tuple.as_slice(),
-        }
+pub type RandIter = Skip<IntoIter<Expression>>;
+
+impl Application {
+    pub fn new(tuple: Vec<Expression>) -> Self {
+        Self { raw: tuple }
     }
 
     pub fn rator(&self) -> Option<&str> {
@@ -32,8 +37,8 @@ impl<'a> Application<'a> {
         })
     }
 
-    pub fn rand(&self) -> Option<&'a [Expression]> {
-        self.raw.get(1..)
+    pub fn into_rand_iter(self) -> RandIter {
+        self.raw.into_iter().skip(1)
     }
 }
 
@@ -52,7 +57,7 @@ pub enum ParseError {
 
 pub type ParseResult<T> = Result<T, Error>;
 
-struct ParseCtx<R: Read> {
+pub struct SExpParser<R: Read> {
     reader: StringReader<R>,
 }
 
@@ -61,8 +66,8 @@ enum ExpressionOrChr {
     Chr(u8),
 }
 
-impl<R: Read> ParseCtx<R> {
-    const fn new(reader: StringReader<R>) -> Self {
+impl<R: Read> SExpParser<R> {
+    pub const fn new(reader: StringReader<R>) -> Self {
         Self { reader }
     }
 
@@ -74,7 +79,7 @@ impl<R: Read> ParseCtx<R> {
         self.reader.seek().map_err(Error::IOError)
     }
 
-    fn parse_expression(&mut self) -> ParseResult<ExpressionOrChr> {
+    pub fn parse_expression(&mut self) -> ParseResult<ExpressionOrChr> {
         let chr = self.roll_up_and_get()?;
         self.seek()?;
         match chr {
@@ -195,4 +200,43 @@ const fn unexpected_eof<T>() -> Result<T, Error> {
 
 const fn unexpected_chr<T>(chr: u8) -> ParseResult<T> {
     Err(Error::ParseError(ParseError::UnexpectedCharacter(chr)))
+}
+
+#[macro_export]
+macro_rules! unwrap_expr {
+    ($e:expr, $typ:path) => {
+        match $e {
+            $typ(tmp) => Some(tmp),
+            _ => None,
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! get_rand {
+    ($iter:expr, $typ:path, $when_none:expr, $when_unexpected:expr) => {
+        if let Some(rand) = $iter.next() {
+            if let Some(value) = unwrap_expr!(rand, $typ) {
+                Ok(value)
+            } else {
+                $when_unexpected
+            }
+        } else {
+            $when_none
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! parse_func {
+    ($name:ident (|$($param_name:ident : $param_type:path),+| $generator:expr, $when_unexpected:expr, $when_insufficient:expr, $when_exceeded:expr) -> $rtype:ty) => {
+        fn $name(rand: RandIter) -> $rtype {
+            $(let $param_name = get_rand!(rand, $param_type, $when_insufficient, $when_unexpected)?;)+
+            if let Some(_) = rand.next() {
+                return $when_exceeded
+            }
+
+            $generator
+        }
+    };
 }

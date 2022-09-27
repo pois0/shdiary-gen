@@ -26,6 +26,7 @@ mod sexp;
 mod string_reader;
 mod util;
 mod new_sexp;
+mod diary_content;
 
 #[derive(Debug)]
 enum Error {
