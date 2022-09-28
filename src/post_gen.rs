@@ -1,10 +1,9 @@
 use std::io::{self, Write};
 
 use crate::date::Date;
+use crate::diary_content::{Document, ImageItem, Images, Item, Text, TextItem};
 use crate::html::HtmlWriter;
 use crate::image::ImagePath;
-use crate::sexp::{Document, ImageItem, Images};
-use crate::sexp::{Item, Text, TextItem};
 
 pub type OutputDocument = Document<ImagePath>;
 

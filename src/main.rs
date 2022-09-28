@@ -9,15 +9,20 @@ use std::{
     string::FromUtf8Error,
 };
 
-use crate::image::ImageConverter;
+use crate::{
+    diary_content::parse_diary_content, image::ImageConverter, sexp::SExpParser,
+    string_reader::StringReader,
+};
 use ::image::ImageError;
+use diary_content::{Document, ImageItem, Images, Item, SourceDoucument, SourceItem};
 use index_gen::generate_index;
 use log::{debug, info};
 use post_gen::{generate_monthly, OutputDocument, OutputItem};
-use sexp::{Document, ImageItem, Images, Item, ParseError, SourceDoucument, SourceItem};
+use sexp::ParseError;
 use util::push_path;
 
 mod date;
+mod diary_content;
 mod html;
 mod image;
 mod index_gen;
@@ -32,6 +37,7 @@ enum Error {
     Utf8Error(FromUtf8Error),
     PathNameError(String),
     ParseError(ParseError),
+    SyntaxError(diary_content::Error),
     ImageError(ImageError),
     NotUnicode(OsString),
 }
@@ -98,15 +104,18 @@ fn main() -> Result<()> {
             for day in day_list.into_iter().filter_map(|res| res.ok()) {
                 let day_num = path_name_to_usize(&day)?;
                 let reader = File::open(day.path())
-                    .map(|f| BufReader::new(f))
+                    .and_then(|f| StringReader::new(BufReader::new(f)))
                     .map_err(Error::IOError)?;
+                let reader = if let Some(r) = reader { r } else { continue };
 
                 debug!("Parsing a post of {}/{}/{}", year_num, month_num, day_num);
-                let post = sexp::parse(reader).map_err(|err| match err {
+                let mut parser = SExpParser::new(reader);
+                let expr = parser.parse_expression().map_err(|err| match err {
                     sexp::Error::IOError(err) => Error::IOError(err),
                     sexp::Error::Utf8Error(err) => Error::Utf8Error(err),
                     sexp::Error::ParseError(err) => Error::ParseError(err),
                 })?;
+                let post = parse_diary_content(expr).map_err(Error::SyntaxError)?;
 
                 let output = handle_image(&image_converter, post)?;
 
@@ -141,9 +150,7 @@ fn main() -> Result<()> {
             let mut buf = BufWriter::new(f);
             generate_index(&mut buf, years.iter())
         })
-        .map_err(Error::IOError)?;
-
-    Ok(())
+        .map_err(Error::IOError)
 }
 
 fn copy_source(src: &PathBuf, dst: &PathBuf) -> io::Result<()> {
@@ -169,12 +176,11 @@ fn copy_source(src: &PathBuf, dst: &PathBuf) -> io::Result<()> {
 }
 
 fn handle_image(converter: &ImageConverter, src: SourceDoucument) -> Result<OutputDocument> {
-    let mut contents = Vec::with_capacity(src.contents().len());
-    for item in src.into_contents() {
-        let output_item = handle_image_items(converter, item)?;
-        contents.push(output_item);
-    }
-    Ok(Document::new(contents))
+    src.into_contents()
+        .into_iter()
+        .map(|item| handle_image_items(converter, item))
+        .collect::<Result<Vec<OutputItem>>>()
+        .map(Document::new)
 }
 
 fn handle_image_items(converter: &ImageConverter, src: SourceItem) -> Result<OutputItem> {

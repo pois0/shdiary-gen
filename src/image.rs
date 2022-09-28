@@ -151,7 +151,7 @@ impl ImageConverter {
             .map_err(Error::IOError)?;
         Ok(ImagePath {
             image_name: image_path,
-            size: size,
+            size,
         })
     }
 
