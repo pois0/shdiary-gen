@@ -129,6 +129,7 @@ fn parse_top_expr(expr: Expression) -> ParseResult<SourceItem> {
             }}
         }
         Expression::String(s) => Ok(Item::Text(vec![TextItem::RawString(s)])),
+        Expression::BackQuotedString(s) => Ok(Item::Text(vec![TextItem::Code(s)])),
         _ => illegal_element(),
     }
 }
@@ -153,7 +154,8 @@ fn parse_text_item(expr: Expression) -> ParseResult<TextItem> {
                 "code" => parse_code(rand)
             }}
         }
-        Expression::String(s) => Ok(TextItem::RawString(s.to_string())),
+        Expression::String(s) => Ok(TextItem::RawString(s)),
+        Expression::BackQuotedString(s) => Ok(TextItem::Code(s)),
         _ => illegal_element(),
     }
 }

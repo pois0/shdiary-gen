@@ -11,6 +11,7 @@ pub enum Expression {
     Tuple(Vec<Expression>),
     Literal(String),
     String(String),
+    BackQuotedString(String),
     Integer(u32),
 }
 
@@ -86,6 +87,7 @@ impl<R: Read> SExpParser<R> {
         match chr {
             b'(' => self.parse_tuple().map(ExpressionOrChr::Expression),
             b'"' => self.parse_string().map(ExpressionOrChr::Expression),
+            b'`' => self.parse_backquoted_string().map(ExpressionOrChr::Expression),
             b'0'..=b'9' => self.parse_number(chr).map(ExpressionOrChr::Expression),
             b'a'..=b'z' | b'A'..=b'Z' => self.parse_literal(chr).map(ExpressionOrChr::Expression),
             _ => Ok(ExpressionOrChr::Chr(chr)),
@@ -131,6 +133,39 @@ impl<R: Read> SExpParser<R> {
 
                     return String::from_utf8(result)
                         .map(Expression::String)
+                        .map_err(Error::Utf8Error);
+                }
+                _ => {
+                    result.push(chr);
+                    self.seek()?;
+                }
+            }
+        }
+
+        unexpected_eof()
+    }
+
+    fn parse_backquoted_string(&mut self) -> ParseResult<Expression> {
+        let mut result = Vec::new();
+        while let Some(chr) = self.chr() {
+            match chr {
+                b'\\' => {
+                    self.seek()?;
+                    if let Some(chr) = &self.chr() {
+                        let chr = match chr {
+                            b'\\' => b'\\',
+                            b'`' => b'`',
+                            _ => return unexpected_chr(*chr),
+                        };
+                        result.push(chr);
+                        self.seek()?;
+                    }
+                }
+                b'`' => {
+                    self.seek()?;
+
+                    return String::from_utf8(result)
+                        .map(Expression::BackQuotedString)
                         .map_err(Error::Utf8Error);
                 }
                 _ => {
