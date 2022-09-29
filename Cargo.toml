@@ -20,3 +20,6 @@ features = ["webp", "jpeg"]
 [dependencies.xxhash-rust]
 version = "0.8.5"
 features = ["xxh3"]
+
+[dev-dependencies]
+criterion = "0.4.0"
