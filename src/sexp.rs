@@ -6,7 +6,7 @@ use std::{
 
 use crate::string_reader::StringReader;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Expression {
     Tuple(Vec<Expression>),
     Literal(String),
@@ -87,7 +87,9 @@ impl<R: Read> SExpParser<R> {
         match chr {
             b'(' => self.parse_tuple().map(ExpressionOrChr::Expression),
             b'"' => self.parse_string().map(ExpressionOrChr::Expression),
-            b'`' => self.parse_backquoted_string().map(ExpressionOrChr::Expression),
+            b'`' => self
+                .parse_backquoted_string()
+                .map(ExpressionOrChr::Expression),
             b'0'..=b'9' => self.parse_number(chr).map(ExpressionOrChr::Expression),
             b'a'..=b'z' | b'A'..=b'Z' => self.parse_literal(chr).map(ExpressionOrChr::Expression),
             _ => Ok(ExpressionOrChr::Chr(chr)),
@@ -191,38 +193,35 @@ impl<R: Read> SExpParser<R> {
                     self.seek()?;
                     result = result * 10 + str_to_u32(chr);
                 }
-                _ => {
-                    return Ok(Expression::Integer(result));
-                }
+                _ => break,
             }
         }
 
-        unexpected_eof()
+        Ok(Expression::Integer(result))
     }
 
     fn parse_literal(&mut self, initial: u8) -> ParseResult<Expression> {
         let mut result = vec![initial];
 
         while let Some(chr) = self.chr() {
-            if chr.is_ascii_whitespace() {
-                return String::from_utf8(result)
-                    .map(Expression::Literal)
-                    .map_err(Error::Utf8Error);
+            if !chr.is_ascii_alphanumeric() {
+                break;
             }
             result.push(chr);
             self.seek()?;
         }
 
-        unexpected_eof()
+        String::from_utf8(result)
+            .map(Expression::Literal)
+            .map_err(Error::Utf8Error)
     }
 
     fn roll_up_and_get(&mut self) -> ParseResult<u8> {
         while let Some(chr) = self.chr() {
-            match chr {
-                0x20 | 0x09 | 0x0a | 0x0c | 0x0d => {
-                    self.seek()?;
-                }
-                _ => return Ok(chr),
+            if chr.is_ascii_whitespace() {
+                self.seek()?;
+            } else {
+                return Ok(chr);
             }
         }
 
@@ -275,4 +274,92 @@ macro_rules! parse_func {
             }
         }
     };
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{
+        sexp::{Expression, SExpParser},
+        string_reader::StringReader,
+    };
+    use std::iter;
+
+    #[inline]
+    fn test_base(txt: &str, expected: Expression) {
+        let txt = txt.as_bytes();
+        let reader = StringReader::new(txt).unwrap().unwrap();
+        let mut parser = SExpParser::new(reader);
+        assert_eq!(expected, parser.parse_expression().unwrap());
+    }
+
+    #[test]
+    fn parse_empty_tuple() {
+        test_base(r"()", Expression::Tuple(vec![]));
+    }
+
+    #[test]
+    fn parse_string() {
+        let text = "TestString1234567890!@#$%^&*()_+|~";
+        test_base(
+            &format!("\"{}\"", text),
+            Expression::String(text.to_string()),
+        );
+    }
+
+    #[test]
+    fn parse_backquoted_string() {
+        let text = "TestString1234567890!@#$%^&*()_+|~";
+        test_base(
+            &format!("`{}`", text),
+            Expression::BackQuotedString(text.to_string()),
+        );
+    }
+
+    #[test]
+    fn parse_int() {
+        let i = 1234567890u32;
+        test_base(&format!("{}", i), Expression::Integer(i));
+    }
+
+    #[test]
+    fn parse_literal() {
+        let text = "TestString1234567890gnirtStseT";
+        test_base(&format!("{}", text), Expression::Literal(text.to_string()))
+    }
+
+    #[test]
+    fn parse_complicated() {
+        let text = r#"
+(() 123 "string" `backquoted` literal)
+"#;
+        test_base(
+            &text,
+            Expression::Tuple(vec![
+                Expression::Tuple(vec![]),
+                Expression::Integer(123),
+                Expression::String("string".to_string()),
+                Expression::BackQuotedString("backquoted".to_string()),
+                Expression::Literal("literal".to_string()),
+            ]),
+        )
+    }
+
+    #[test]
+    fn parse_nested() {
+        fn nest(n: usize) -> String {
+            if n == 0 {
+                String::new()
+            } else {
+                format!("({})", nest(n - 1))
+            }
+        }
+
+        let i = 40;
+        test_base(
+            &nest(i),
+            iter::repeat(()).take(i - 1).fold(Expression::Tuple(vec![]), |acc, _| {
+                Expression::Tuple(vec![acc])
+            }),
+        );
+    }
 }
