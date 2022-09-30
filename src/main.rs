@@ -4,7 +4,7 @@ use std::{
     ffi::OsString,
     fmt::Debug,
     fs::{self, metadata, DirEntry, File},
-    io::{self, BufReader, BufWriter},
+    io::{self, BufReader, BufWriter, Read},
     path::{Path, PathBuf},
     string::FromUtf8Error,
 };
@@ -13,14 +13,16 @@ use crate::{
     diary_content::parse_diary_content, image::ImageConverter, sexp::SExpParser,
     string_reader::StringReader,
 };
+use albums::parse_albums;
 use ::image::ImageError;
 use diary_content::{Document, ImageItem, Images, Item, SourceDoucument, SourceItem};
 use index_gen::generate_index;
 use log::{debug, info};
 use post_gen::{generate_monthly, OutputDocument, OutputItem};
-use sexp::ParseError;
+use sexp::{Expression, ParseError};
 use util::push_path;
 
+mod albums;
 mod date;
 mod diary_content;
 mod html;
@@ -29,7 +31,9 @@ mod index_gen;
 mod post_gen;
 mod sexp;
 mod string_reader;
+mod syntax_error;
 mod util;
+mod albums_gen;
 
 #[derive(Debug)]
 enum Error {
@@ -37,7 +41,7 @@ enum Error {
     Utf8Error(FromUtf8Error),
     PathNameError(String),
     ParseError(ParseError),
-    SyntaxError(diary_content::Error),
+    SyntaxError(syntax_error::Error),
     ImageError(ImageError),
     NotUnicode(OsString),
 }
@@ -103,18 +107,11 @@ fn main() -> Result<()> {
 
             for day in day_list.into_iter().filter_map(|res| res.ok()) {
                 let day_num = path_name_to_usize(&day)?;
-                let reader = File::open(day.path())
-                    .and_then(|f| StringReader::new(BufReader::new(f)))
-                    .map_err(Error::IOError)?;
+                let reader = new_string_reader(day.path())?;
                 let reader = if let Some(r) = reader { r } else { continue };
 
                 debug!("Parsing a post of {}/{}/{}", year_num, month_num, day_num);
-                let mut parser = SExpParser::new(reader);
-                let expr = parser.parse_expression().map_err(|err| match err {
-                    sexp::Error::IOError(err) => Error::IOError(err),
-                    sexp::Error::Utf8Error(err) => Error::Utf8Error(err),
-                    sexp::Error::ParseError(err) => Error::ParseError(err),
-                })?;
+                let expr = parse_to_expression(reader)?;
                 let post = parse_diary_content(expr).map_err(Error::SyntaxError)?;
 
                 let output = handle_image(&image_converter, post)?;
@@ -143,6 +140,12 @@ fn main() -> Result<()> {
         copy_source(&source_path, &public_path).map_err(Error::IOError)?;
     }
 
+    let albums_path = push_path(&current_path, "albums.lisp");
+    let album_path_exists = albums_path.try_exists().map_err(Error::IOError)?;
+    if album_path_exists {
+        generate_albums(albums_path, push_path(&public_path, "albums.html"))?;
+    }
+
     let index_file_name = push_path(&public_path, "index.html");
     info!("Generating the index file");
     File::create(index_file_name)
@@ -151,6 +154,15 @@ fn main() -> Result<()> {
             generate_index(&mut buf, years.iter())
         })
         .map_err(Error::IOError)
+}
+
+fn parse_to_expression<R: Read>(reader: StringReader<R>) -> Result<Expression> {
+    let mut parser = SExpParser::new(reader);
+    parser.parse_expression().map_err(|err| match err {
+        sexp::Error::IOError(err) => Error::IOError(err),
+        sexp::Error::Utf8Error(err) => Error::Utf8Error(err),
+        sexp::Error::ParseError(err) => Error::ParseError(err),
+    })
 }
 
 fn copy_source(src: &PathBuf, dst: &PathBuf) -> io::Result<()> {
@@ -173,6 +185,17 @@ fn copy_source(src: &PathBuf, dst: &PathBuf) -> io::Result<()> {
         }
     }
     Ok(())
+}
+
+fn generate_albums(src: PathBuf, dst: PathBuf) -> Result<()> {
+    let reader = new_string_reader(src)?;
+    let reader = if let Some(r) = reader { r } else { return Ok(()) };
+    let expr = parse_to_expression(reader)?;
+    let album_index = parse_albums(expr).map_err(Error::SyntaxError)?;
+    File::create(dst).and_then(|f| {
+        let mut writer = BufWriter::new(f);
+        albums_gen::generate_albums(&mut writer, album_index)
+    }).map_err(Error::IOError)
 }
 
 fn handle_image(converter: &ImageConverter, src: SourceDoucument) -> Result<OutputDocument> {
@@ -216,6 +239,12 @@ fn handle_image_items(converter: &ImageConverter, src: SourceItem) -> Result<Out
         Item::Text(x) => Ok(Item::Text(x)),
         Item::Header(x) => Ok(Item::Header(x)),
     }
+}
+
+fn new_string_reader(src: PathBuf) -> Result<Option<StringReader<BufReader<File>>>> {
+    File::open(src)
+        .and_then(|f| StringReader::new(BufReader::new(f)))
+        .map_err(Error::IOError)
 }
 
 fn mkdir_if_not_exists(path: PathBuf) -> io::Result<()> {

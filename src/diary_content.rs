@@ -1,41 +1,7 @@
-use crate::get_rand;
-use crate::parse_func;
-use crate::sexp::expect_application;
-use crate::sexp::ApplicationError;
 use crate::sexp::{Expression, RandIter};
-use crate::unwrap_expr;
-
-macro_rules! parse_diary_func {
-    ($name:ident (|$($param_name:ident : $param_type:path),+| $generator:expr) -> $rtype:ty) => {
-        parse_func!(
-            $name(
-                |$($param_name : $param_type),+| $generator,
-                illegal_element(),
-                operand_mismatch(),
-                operand_mismatch()
-            ) -> ParseResult<$rtype>
-        );
-    };
-}
-
-macro_rules! get_rand_diary {
-    ($iter:expr, $typ:path) => { get_rand!($iter, $typ, operand_mismatch(), illegal_element()) };
-}
-
-macro_rules! match_keyword {
-    ($ve:expr, |$rand:ident| {$($patt:pat => $then:expr),+}) => {
-        match expect_application($ve) {
-            Ok((rator, $rand)) => {
-                match rator.as_str() {
-                    $($patt => $then,)*
-                    _ => unknown_operator(rator.to_owned()),
-                }
-            },
-            Err(ApplicationError::MissingOperator) => Err(Error::MissingOperator),
-            Err(ApplicationError::HeadIsNotLiteral) => Err(Error::IllegalElement),
-        }
-    }
-}
+use crate::syntax_error::ParseResult;
+use crate::syntax_error::{illegal_element, Error};
+use crate::{get_rand, get_rand_diary, match_keyword, parse_diary_func, unwrap_expr};
 
 #[derive(Clone, Debug)]
 pub struct Document<T: Sized + Clone> {
@@ -97,20 +63,10 @@ pub struct ImageItem<T: Sized + Clone> {
     pub caption: Option<String>,
 }
 
-#[derive(Debug)]
-pub enum Error {
-    IllegalElement,
-    MissingOperator,
-    UnknownOperator(String),
-    OperandMismatch,
-}
-
-pub type ParseResult<T> = Result<T, Error>;
-
 pub fn parse_diary_content(expr: Expression) -> ParseResult<SourceDoucument> {
     match expr {
         Expression::Tuple(l) => parse_top_list(l).map(Document::new),
-        _ => Err(Error::IllegalElement),
+        _ => illegal_element(),
     }
 }
 
@@ -227,16 +183,4 @@ fn parse_image_items(expr: Expression) -> ParseResult<ImageItem<String>> {
         }
         _ => illegal_element(),
     }
-}
-
-const fn illegal_element<T>() -> ParseResult<T> {
-    Err(Error::IllegalElement)
-}
-
-const fn unknown_operator<T>(name: String) -> ParseResult<T> {
-    Err(Error::UnknownOperator(name))
-}
-
-const fn operand_mismatch<T>() -> ParseResult<T> {
-    Err(Error::OperandMismatch)
 }

@@ -35,6 +35,10 @@ impl<'a, W: Write> IndexGenerator<'a, W> {
         self.writer.start_attr("a", &[("href", "/links")])?;
         write!(self.writer, "リンク")?;
         self.writer.end("a")?;
+        write!(self.writer, " | ")?;
+        self.writer.start_attr("a", &[("href", "/albums")])?;
+        write!(self.writer, "アルバム一覧")?;
+        self.writer.end("a")?;
         self.writer.start("hr")?;
         self.writer.start("ul")?;
         for (year, months) in list {

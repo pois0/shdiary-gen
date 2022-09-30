@@ -40,9 +40,9 @@ impl<'a, W: Write> PostGenerator<'a, W> {
         write!(self.writer, "{}", title)?;
         self.writer.end("h1")?;
         self.writer.start_attr("a", &[("href", "/")])?;
-        write!(self.writer, "{}", "ホーム")?;
+        write!(self.writer, "ホーム")?;
         self.writer.end("a")?;
-        write!(self.writer, "{}", "へ")?;
+        write!(self.writer, "へ")?;
         self.writer.start("hr")?;
         self.writer.start("dl")?;
 
