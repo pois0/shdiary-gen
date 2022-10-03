@@ -221,7 +221,7 @@ fn parse_album(expr: Expression) -> ParseResult<(AlbumKind, Album)> {
     let l = unwrap_expr!(expr, Expression::Tuple).ok_or(Error::IllegalElement)?;
     match_keyword! { l, |rand| {
         "studio" => handle(AlbumKind::StudioAlbum, rand),
-        "livealbum" => handle(AlbumKind::LiveAlbum, rand),
+        "live" => handle(AlbumKind::LiveAlbum, rand),
         "compilation" => handle(AlbumKind::Compilation, rand),
         "studioandlive" => handle(AlbumKind::StudioAndLive, rand),
         "concert" => handle(AlbumKind::Concert, rand)
