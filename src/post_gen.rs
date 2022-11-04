@@ -83,7 +83,7 @@ impl<'a, W: Write> PostGenerator<'a, W> {
     }
 
     fn write_date(&mut self, date: &Date) -> io::Result<()> {
-        let id = format!("{}", date.day());
+        let id = format!("{:02}", date.day());
         self.writer.start_attr("h2", &[("id", &id)])?;
         self.writer
             .start_attr("a", &[("href", &format!("#{}", id))])?;
